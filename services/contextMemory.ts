@@ -56,7 +56,11 @@ export const storeSimulationResult = (params: SimulationParams, result: Simulati
 };
 export const getCachedSimulation = (params: SimulationParams): SimulationResult | null => {
     const cache = getSimulationCache();
-    return cache[JSON.stringify(params)] || null;
+    const result = cache[JSON.stringify(params)] || null;
+    if (result) {
+        console.debug(`[ContextMemory.Simulation] Resultado da simulação encontrado no cache para os parâmetros:`, params);
+    }
+    return result;
 };
 
 
@@ -87,20 +91,27 @@ const extractKeywords = (text: string): string[] => {
 
 
 /**
- * Segments a larger text content into smaller, indexed chunks.
+ * Segments a larger text content into smaller, indexed chunks based on character length.
  * @param content The full text content.
  * @param fileName The name of the source file.
  * @returns An array of DocumentChunk objects.
  */
 const segmentContent = (content: string, fileName: string): DocumentChunk[] => {
-    const segments = content.split(/\n\s*\n/); // Split by empty lines
-    return segments.map(seg => {
-        return {
-            fileName,
-            content: seg,
-            keywords: extractKeywords(seg), // Use the new safe function
-        };
-    }).filter(chunk => chunk.content.trim().length > 20); // Filter out very small chunks
+    const MAX_CHUNK_LENGTH = 5000;
+    const chunks: DocumentChunk[] = [];
+    if (!content || typeof content !== 'string') return chunks;
+
+    for (let i = 0; i < content.length; i += MAX_CHUNK_LENGTH) {
+        const segment = content.substring(i, i + MAX_CHUNK_LENGTH);
+        if (segment.trim().length > 20) { // Filter out very small or empty chunks
+            chunks.push({
+                fileName,
+                content: segment,
+                keywords: extractKeywords(segment),
+            });
+        }
+    }
+    return chunks;
 };
 
 // 1. Indexing Functions

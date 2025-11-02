@@ -14,7 +14,7 @@ import { getAnswer, storeAnswer, searchIndex, getForecast, getChartConfig, store
 const TOKEN_LIMIT = 7500;
 
 /**
- * Constrói o prompt final para a IA, adaptando-se inteligentemente ao contexto disponível.
+ * Constrói o prompt final para a IA, adaptando-se inteligentemente ao contexto disponível e controlando o uso de tokens.
  */
 const buildHybridPrompt = (
     question: string,
@@ -33,7 +33,7 @@ const buildHybridPrompt = (
         contextSource = 'BRUTO E COMPLETO (FALLBACK)';
     }
     
-    // Prepend forecast context if available
+    // Adiciona o contexto de previsão no início, se disponível
     if (forecastContext) {
         finalContext = `${forecastContext}\n\n${finalContext}`;
     }
@@ -57,17 +57,18 @@ const buildHybridPrompt = (
         **SUA RESPOSTA DETALHADA:**
     `;
 
-    // Token Control
+    // Controle de Tokens
     const estimatedTokens = estimateTokens(basePrompt);
     if (estimatedTokens > TOKEN_LIMIT) {
         console.warn(`[ChatService] O prompt excedeu o limite de tokens (${estimatedTokens}). Realizando truncamento.`);
         const ratio = TOKEN_LIMIT / estimatedTokens;
+        // Trunca o contexto, que é a parte mais variável, e mantém o resto do prompt.
         const truncatedContextLength = Math.floor(finalContext.length * ratio * 0.9);
         finalContext = finalContext.substring(0, truncatedContextLength);
 
         return `
             Você é a Nexus AI, uma IA especialista em análise fiscal. Responda à pergunta do usuário com base no contexto.
-            AVISO: O contexto foi truncado para caber no limite. Seja conciso.
+            AVISO: O contexto foi truncado para caber no limite de tokens. Seja conciso.
             
             --- INÍCIO DO CONTEXTO (TRUNCADO) ---
             ${finalContext}
@@ -97,10 +98,12 @@ export const getChatResponse = async (
     logError({ source: 'ChatService', message: `Iniciando pipeline de resposta para: "${question}"`, severity: 'info' });
 
     // 1. Check Q&A Cache
-    const cachedAnswer = getAnswer(question);
-    if (cachedAnswer && attachedFiles.length === 0) {
-        logError({ source: 'ChatService', message: 'Resposta encontrada no cache de Q&A.', severity: 'info' });
-        return cachedAnswer;
+    if (attachedFiles.length === 0) {
+        const cachedAnswer = getAnswer(question);
+        if (cachedAnswer) {
+            logError({ source: 'ChatService', message: 'Resposta encontrada no cache de Q&A.', severity: 'info' });
+            return cachedAnswer;
+        }
     }
 
     // 2. RAG Context Retrieval
@@ -118,8 +121,8 @@ export const getChatResponse = async (
     // 4. Handle newly attached files
     if (attachedFiles.length > 0) {
         const fileParts = await convertFilesToGeminiParts(attachedFiles);
-        const attachedFileText = fileParts.map(p => p.text).join('\n');
-        // Add attached file content to both contexts to ensure it's used
+        const attachedFileText = fileParts.map(p => 'text' in p ? p.text : '').join('\n');
+        // Adiciona o conteúdo dos arquivos anexados aos contextos para garantir seu uso
         ragContext += `\n\n--- CONTEÚDO DE ARQUIVOS ANEXADOS ---\n${attachedFileText}`;
         fallbackContext += `\n\n--- CONTEÚDO DE ARQUIVOS ANEXADOS ---\n${attachedFileText}`;
     }
@@ -141,13 +144,15 @@ export const getChatResponse = async (
 
     // 6. Build the final prompt and call AI
     const finalPrompt = buildHybridPrompt(question, ragContext, fallbackContext, forecastContext);
-    logError({ source: 'ChatService', message: `Enviando prompt para IA. Tokens: ${estimateTokens(finalPrompt)}`, severity: 'info' });
+    logError({ source: 'ChatService', message: `Enviando prompt para IA. Tokens estimados: ${estimateTokens(finalPrompt)}`, severity: 'info' });
 
     try {
         const responseText = await getChatCompletion(finalPrompt, logError);
         
-        // 7. Store in Q&A Cache
-        storeAnswer(question, responseText);
+        // 7. Store in Q&A Cache if no new files were attached
+        if (attachedFiles.length === 0) {
+            storeAnswer(question, responseText);
+        }
         
         const latency = Date.now() - startTime;
         logError({ source: 'ChatService', message: `Resposta da IA recebida em ${latency}ms.`, severity: 'info' });
@@ -169,12 +174,12 @@ export const generateChartConfigFromData = async (
     logError: (error: Omit<LogError, 'timestamp'>) => void
 ): Promise<ChartConfig | null> => {
     const startTime = Date.now();
-    logError({ source: 'ChatService.Chart', message: `Attempting to generate chart for: "${question}"`, severity: 'info' });
+    logError({ source: 'ChatService.Chart', message: `Tentando gerar gráfico para: "${question}"`, severity: 'info' });
 
     // 1. Check Chart Cache
     const cachedConfig = getChartConfig(question);
     if (cachedConfig) {
-        logError({ source: 'ChatService.Chart', message: 'Chart config found in cache.', severity: 'info' });
+        logError({ source: 'ChatService.Chart', message: 'Configuração do gráfico encontrada no cache.', severity: 'info' });
         return cachedConfig as ChartConfig;
     }
     
@@ -188,7 +193,7 @@ export const generateChartConfigFromData = async (
     const estimatedTokens = estimateTokens(contextString);
 
     if (estimatedTokens > TOKEN_LIMIT * 0.8) { 
-        console.warn(`[ChatService.Chart] Context data is large (${estimatedTokens} tokens). Sending only key metrics.`);
+        console.warn(`[ChatService.Chart] Contexto de dados é grande (${estimatedTokens} tokens). Enviando apenas métricas chave.`);
         contextString = JSON.stringify({ keyMetrics: dataForAI.keyMetrics });
     }
     

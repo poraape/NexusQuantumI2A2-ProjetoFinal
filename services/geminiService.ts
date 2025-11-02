@@ -12,6 +12,7 @@ import {
   ClassificationResult,
 } from '../types';
 import { parseFile, extractFullTextFromFile } from './fileParsers.ts';
+import { GEMINI_API_KEY } from '../config.ts';
 
 const CHUNK_TOKEN_THRESHOLD = 8000; // ≈ 32,000 characters
 
@@ -51,6 +52,11 @@ const _callGeminiApiOnce = async (
         ...(isJsonMode && { generationConfig: { responseMimeType: 'application/json' } })
     };
 
+    // Pre-flight check for the embedded key
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.length < 20) {
+      throw new Error("API Key ausente ou inválida — verifique o config.ts");
+    }
+
     // 1. Try Proxy
     try {
         console.debug(`[GeminiService] Attempting API call via proxy...`);
@@ -78,14 +84,10 @@ const _callGeminiApiOnce = async (
 
         // 2. Fallback to Direct API
         try {
-            const apiKey = process.env.API_KEY;
-            if (!apiKey) {
-                throw new Error("A variável de ambiente API_KEY não está configurada.");
-            }
+            console.debug("[GeminiService] Using secure embedded API key for fallback.");
 
-            console.debug(`[GeminiService] Attempting API call directly...`);
             const directResponse = await fetch(
-                `${GEMINI_DIRECT_URL}/${model}:generateContent?key=${apiKey}`,
+                `${GEMINI_DIRECT_URL}/${model}:generateContent?key=${GEMINI_API_KEY}`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -118,6 +120,7 @@ const _callGeminiApiOnce = async (
 // --- Helper Functions ---
 
 export const estimateTokens = (text: string): number => {
+    // 1 token is roughly 4 characters for English. We'll use this as a general heuristic.
     return Math.ceil(text.length / 4);
 };
 
@@ -135,11 +138,19 @@ export const callGeminiWithRetry = async (
     );
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        const startTime = performance.now();
         try {
             console.log(`DEBUG: Chamada da API Gemini (tentativa ${attempt}/${MAX_RETRIES}). Tamanho do payload: ${JSON.stringify(mutableParts).length} caracteres.`);
             
             const response = await _callGeminiApiOnce(mutableParts, isJsonMode);
             
+            const duration = performance.now() - startTime;
+            logError({
+                source: 'geminiService',
+                message: `Chamada da API bem-sucedida em ${duration.toFixed(0)}ms.`,
+                severity: 'info',
+            });
+
             if (!response.text && !response.candidates) {
                  const blockReason = response.promptFeedback?.blockReason;
                  throw new Error(`A resposta da IA estava vazia ou foi bloqueada. Motivo: ${blockReason || 'Desconhecido'}.`);
@@ -320,7 +331,7 @@ export const generateReportFromFiles = async (
 
     // Use the map-reduce strategy if the payload is too large
     if (totalTokens > CHUNK_TOKEN_THRESHOLD && fileContents.length > 1) {
-        logError({ source: 'geminiService.executive', message: `Payload grande detectado (${totalTokens} tokens). Iniciando estratégia de análise em lotes.`, severity: 'info' });
+        logError({ source: 'geminiService.executive', message: `Payload grande detectado (${totalTokens} tokens). Iniciando estratégia de análise em lotes (Map-Reduce).`, severity: 'info' });
         
         // --- MAP STEP (Sequential) ---
         const individualSummaries = [];
@@ -357,6 +368,7 @@ export const generateReportFromFiles = async (
         const collectedInsights = individualSummaries.map(s => s.actionableInsight).filter(Boolean);
 
         // --- REDUCE STEP (AI Synthesis) ---
+        logError({ source: 'geminiService.reduceStep', message: 'Sintetizando resumo final a partir dos dados agregados.', severity: 'info' });
         const synthesisPrompt = `
             Você é um especialista em contabilidade e análise fiscal no Brasil. Com base nos dados agregados e insights individuais fornecidos, gere o restante do resumo executivo.
             

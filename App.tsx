@@ -35,7 +35,7 @@ function App() {
   useEffect(() => {
     const initializeApp = () => {
         iniciarAuditoriaAutomatica();
-        console.log("[App Init] Application ready. API key is expected from environment.");
+        console.log("[App Init] Application ready. Using secure embedded API key.");
         const lastSummary = getLastReportSummary();
         if (lastSummary) {
             setGeneratedReport({ executiveSummary: lastSummary, fullTextAnalysis: undefined });
@@ -211,12 +211,13 @@ function App() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       let displayError = errorMessage;
-      
-      if (errorMessage.toLowerCase().includes("api key") || errorMessage.toLowerCase().includes("api_key")) {
-        displayError = 'Sua chave da API configurada no ambiente é inválida ou expirou. Verifique a configuração e atualize a página.';
+      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || errorMessage.toLowerCase().includes("api_key") || errorMessage.includes("400");
+
+      if (isApiKeyError) {
+        displayError = 'A chave de API configurada na aplicação é inválida. Por favor, contate o administrador.';
         logError({
             source: 'GeminiService',
-            message: 'A chave da API fornecida no ambiente é inválida ou expirou.',
+            message: 'A chave de API embutida é inválida.',
             severity: 'critical',
             details: err,
         });
@@ -229,13 +230,15 @@ function App() {
           severity: 'critical',
           details: err instanceof Error ? err.stack : JSON.stringify(err)
       });
+      
       const currentStepIndex = pipelineSteps.findIndex(s => s.status === ProcessingStepStatus.IN_PROGRESS);
       if (currentStepIndex !== -1) {
         updatePipelineStep(currentStepIndex, ProcessingStepStatus.FAILED);
       } else {
         updatePipelineStep(0, ProcessingStepStatus.FAILED);
       }
-      setTimeout(() => setView('upload'), 3000);
+      
+      setView('upload');
       console.error("Failed to process files or generate report:", err);
     }
   };
