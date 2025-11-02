@@ -1,89 +1,64 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { UploadIcon } from './icons/UploadIcon';
+import React, { useState, useCallback } from 'react';
+import { UploadIcon } from './icons/UploadIcon.tsx';
 
 interface FileUploadProps {
   onFileUpload: (files: File[]) => void;
-  error?: string | null;
+  error: string | null;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, error }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(true);
   }, []);
 
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files && files.length > 0) {
+  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length > 0) {
       onFileUpload(files);
     }
   }, [onFileUpload]);
-  
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-     if (files && files.length > 0) {
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (files.length > 0) {
       onFileUpload(files);
     }
   };
 
-  const handleClick = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
-    <div className="w-full max-w-2xl bg-bg-secondary backdrop-blur-xl rounded-3xl border border-border-glass shadow-glass p-8 flex flex-col items-center">
-        <h2 className="text-2xl font-semibold text-content-emphasis mb-6">Central de Upload de Documentos</h2>
-        
-        {error && (
-            <div className="w-full p-3 mb-4 bg-red-500/20 border border-red-500/50 rounded-xl text-center">
-                <p className="text-sm text-red-300">{error}</p>
+    <div className="w-full max-w-3xl text-center">
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`relative flex flex-col items-center justify-center w-full p-12 border-2 border-dashed rounded-3xl transition-colors duration-300 ${isDragOver ? 'border-accent bg-accent/10' : 'border-border-glass bg-bg-secondary/50'}`}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-bg-secondary via-transparent to-bg-secondary opacity-50 backdrop-blur-sm rounded-3xl"></div>
+        <div className="relative z-10 flex flex-col items-center">
+            <div className="bg-accent/20 p-4 rounded-full mb-4">
+                <UploadIcon className="w-12 h-12 text-accent" />
             </div>
-        )}
-
-        <div
-            className={`w-full p-10 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
-            ${isDragging ? 'border-accent bg-accent/10 scale-105' : 'border-border-glass hover:border-accent/70 hover:bg-white/5'}`}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            onClick={handleClick}
-        >
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                multiple
-                className="hidden"
-                accept=".xml,.pdf,.csv,.xlsx,.png,.jpg,.jpeg,.zip,application/zip,application/x-zip-compressed"
-            />
-            <div className="flex flex-col items-center text-center">
-                <UploadIcon className="w-12 h-12 text-content-default mb-4" />
-                <p className="text-lg font-semibold text-accent-light">Clique ou arraste novos arquivos</p>
-                <p className="text-sm text-content-default mt-2">Arquivos .zip serão extraídos. Suporte para XML, PDF, CSV e mais (limite de 200MB).</p>
-            </div>
+            <h2 className="text-3xl font-bold text-content-emphasis mb-2">Arraste e Solte Seus Arquivos Fiscais</h2>
+            <p className="text-content-default mb-6">SPED, NF-e, XML, CSV, TXT, ou arquivos .ZIP contendo-os.</p>
+            <label htmlFor="file-upload" className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-colors">
+                Ou Selecione os Arquivos
+            </label>
+            <input id="file-upload" type="file" multiple className="hidden" onChange={handleFileChange} accept=".xml,.csv,.txt,.zip" />
         </div>
-        <a href="#" className="text-sm text-gray-500 hover:text-accent-light mt-6 underline transition-colors">
-            Não tem um arquivo? Use um exemplo de demonstração.
-        </a>
+      </div>
+      {error && (
+        <p className="mt-4 text-red-400 bg-red-500/10 p-3 rounded-lg">{error}</p>
+      )}
     </div>
   );
 };
