@@ -9,7 +9,7 @@ import { FileTextIcon } from '../icons/FileTextIcon.tsx';
 import { FullTextAnalysis } from './FullTextAnalysis.tsx';
 import { CompareIcon } from '../icons/CompareIcon.tsx';
 import { ComparativeAnalysis } from './ComparativeAnalysis.tsx';
-import { generateComparativeAnalysis, generateFullTextAnalysis } from '../../services/geminiService.ts';
+import { generateComparativeAnalysis } from '../../services/geminiService.ts';
 
 interface DashboardProps {
   initialReport: GeneratedReport;
@@ -20,6 +20,13 @@ interface DashboardProps {
 
 type DashboardView = 'analysis' | 'simulator' | 'fullText' | 'comparison';
 
+/**
+ * O Dashboard atua como o orquestrador principal da UI de análise.
+ * Ele gerencia a navegação entre as diferentes visões (Executiva, Simulador, etc.).
+ * A lógica de carregamento para análises pesadas (Completa e Comparativa) é delegada
+ * aos seus respectivos componentes, que são acionados sob demanda pelo usuário,
+ * otimizando a performance e o uso de tokens.
+ */
 export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFiles, onAnalyzeOther, logError }) => {
   const [report, setReport] = useState<GeneratedReport>(initialReport);
   const [view, setView] = useState<DashboardView>('analysis');
@@ -28,32 +35,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
   const [comparativeReport, setComparativeReport] = useState<ComparativeAnalysisReport | null>(null);
   const [isComparing, setIsComparing] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
-
-  const [isFullTextLoading, setIsFullTextLoading] = useState(false);
-  const [fullTextError, setFullTextError] = useState<string | null>(null);
-
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
-
-  const handleSelectView = useCallback(async (selectedView: DashboardView) => {
-    setView(selectedView);
-    if (selectedView === 'fullText' && !report.fullTextAnalysis && !isFullTextLoading) {
-      setIsFullTextLoading(true);
-      setFullTextError(null);
-      setProgressMessage('Iniciando análise profunda...');
-      try {
-        const fullText = await generateFullTextAnalysis(processedFiles, logError, setProgressMessage);
-        setReport(prev => ({ ...prev!, fullTextAnalysis: fullText }));
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Falha ao carregar a análise completa.";
-        setFullTextError(errorMessage);
-        logError({ source: 'Dashboard.FullText', message: errorMessage, severity: 'critical', details: err });
-      } finally {
-        setIsFullTextLoading(false);
-        setProgressMessage(null);
-      }
-    }
-  }, [report.fullTextAnalysis, isFullTextLoading, processedFiles, logError]);
-
 
   const handleStartComparison = useCallback(async () => {
     if (isComparing || processedFiles.length < 2) return;
@@ -106,10 +88,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
       <div className="flex justify-between items-center mb-4">
         {/* Tabs */}
         <div className="flex items-center border-b border-border-glass">
-            <TabButton label="Análise Executiva" icon={<PaperIcon className="w-5 h-5"/>} isActive={view === 'analysis'} onClick={() => handleSelectView('analysis')} />
-            <TabButton label="Simulador Tributário" icon={<CalculatorIcon className="w-5 h-5"/>} isActive={view === 'simulator'} onClick={() => handleSelectView('simulator')} />
-            <TabButton label="Análise Comparativa" icon={<CompareIcon className="w-5 h-5"/>} isActive={view === 'comparison'} onClick={() => handleSelectView('comparison')} />
-            <TabButton label="Análise Completa" icon={<FileTextIcon className="w-5 h-5"/>} isActive={view === 'fullText'} onClick={() => handleSelectView('fullText')} />
+            <TabButton label="Análise Executiva" icon={<PaperIcon className="w-5 h-5"/>} isActive={view === 'analysis'} onClick={() => setView('analysis')} />
+            <TabButton label="Simulador Tributário" icon={<CalculatorIcon className="w-5 h-5"/>} isActive={view === 'simulator'} onClick={() => setView('simulator')} />
+            <TabButton label="Análise Comparativa" icon={<CompareIcon className="w-5 h-5"/>} isActive={view === 'comparison'} onClick={() => setView('comparison')} />
+            <TabButton label="Análise Completa" icon={<FileTextIcon className="w-5 h-5"/>} isActive={view === 'fullText'} onClick={() => setView('fullText')} />
         </div>
         
         <button 
@@ -120,7 +102,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-        <div className="lg:col-span-3">
+        <div id="dashboard-view-content" className="lg:col-span-3">
             {view === 'analysis' && <ExecutiveAnalysis summary={report.executiveSummary} />}
             {view === 'simulator' && <TaxSimulator report={report} onSimulationComplete={setSimulationResult} logError={logError} />}
             {view === 'comparison' && (
@@ -135,15 +117,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
             )}
             {view === 'fullText' && (
                 <FullTextAnalysis 
-                    analysisText={report.fullTextAnalysis} 
-                    isLoading={isFullTextLoading}
-                    error={fullTextError}
-                    progressMessage={progressMessage}
+                    initialAnalysisText={report.fullTextAnalysis} 
+                    processedFiles={processedFiles}
+                    logError={logError}
+                    onAnalysisComplete={(text) => setReport(prev => ({...prev!, fullTextAnalysis: text}))}
                 />
             )}
         </div>
         <div className="lg:col-span-2">
-            <InteractiveChat report={report} simulationResult={simulationResult} />
+            <InteractiveChat 
+              report={report} 
+              simulationResult={simulationResult} 
+              processedFiles={processedFiles} 
+            />
         </div>
       </div>
     </div>

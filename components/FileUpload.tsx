@@ -48,10 +48,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, error }) =
             <div className="bg-accent/20 p-4 rounded-full mb-4">
                 <UploadIcon className="w-12 h-12 text-accent" />
             </div>
-            <h2 className="text-3xl font-bold text-content-emphasis mb-2">Arraste e Solte Seus Arquivos Fiscais</h2>
-            <p className="text-content-default mb-6">SPED, NF-e, XML, CSV, JSON, PDF, DOCX, XLSX, imagens ou arquivos .ZIP.</p>
+            <h2 className="text-3xl font-bold text-content-emphasis mb-2">Arraste e Solte Seus Arquivos</h2>
+            <p className="text-content-default leading-relaxed max-w-2xl mx-auto mt-2 mb-6">
+              Formatos suportados: XML, PDF, CSV, SPED, DOCX, XLSX, ZIP e mais.
+            </p>
             <label htmlFor="file-upload" className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-colors">
-                Ou Selecione os Arquivos
+                Selecione os Arquivos
             </label>
             <input 
               id="file-upload" 

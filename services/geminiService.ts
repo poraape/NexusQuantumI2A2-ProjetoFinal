@@ -1,97 +1,133 @@
-// Fix: Implementing the Gemini service to handle API calls for report generation and analysis.
-import { GoogleGenAI, Part, GenerateContentResponse } from '@google/genai';
+import { Part } from '@google/genai';
 import {
   ExecutiveSummary,
   ProcessingStepStatus,
-  SimulationParams,
   SimulationResult,
   ComparativeAnalysisReport,
   LogError,
-  GeneratedReport,
   TaxScenario,
+  ClassificationResult,
 } from '../types';
-import { parseFile } from './fileParsers.ts';
+import { parseFile, extractFullTextFromFile } from './fileParsers.ts';
 import { getApiKey } from '../config.ts';
 
-const CHUNK_TOKEN_THRESHOLD = 8000; // ≈ 32,000 characters
+const CHUNK_TOKEN_THRESHOLD = 7000; // Reduced for safety margin
+const MAX_RESPONSE_TOKENS_SUMMARY = 1500;
+const MAX_RESPONSE_TOKENS_COMPARE = 2500;
+const MAX_RESPONSE_TOKENS_FULL = 3500;
+const THROTTLE_DELAY_MS = 1000; // Minimum 1 second between API calls
 
-const getAiInstance = () => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("Chave da API Gemini não encontrada. Por favor, configure-a no início.");
-  }
-  return new GoogleGenAI({ apiKey });
+const GEMINI_PROXY_URL = "https://nexus-quantumi2a2-747991255581.us-west1.run.app/api-proxy/v1beta/models";
+const GEMINI_DIRECT_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_MODEL = "gemini-2.5-flash";
+
+interface GeminiApiResponse {
+  candidates?: {
+    content: { parts: { text: string }[] };
+    finishReason?: string;
+  }[];
+  promptFeedback?: { blockReason: string };
+  text: string;
+  json: () => any;
+}
+
+// --- Throttling and API Call Strategy ---
+
+let lastApiCallTimestamp = 0;
+
+// FIX: Export 'callGeminiThrottled' to be used by other services like the classifier.
+export const callGeminiThrottled = async (
+  parts: Part[],
+  isJsonMode: boolean,
+  logError: (error: Omit<LogError, 'timestamp'>) => void,
+  attempt = 1
+): Promise<GeminiApiResponse> => {
+    const now = Date.now();
+    const elapsed = now - lastApiCallTimestamp;
+    if (elapsed < THROTTLE_DELAY_MS) {
+        const waitTime = THROTTLE_DELAY_MS - elapsed;
+        console.debug(`[Throttler] Waiting for ${waitTime}ms before next API call.`);
+        await new Promise(res => setTimeout(res, waitTime));
+    }
+    lastApiCallTimestamp = Date.now();
+
+    const MAX_RETRIES = 4;
+    try {
+        const response = await _callGeminiApiOnce(parts, isJsonMode);
+        if (!response.text && !response.candidates) {
+            const blockReason = response.promptFeedback?.blockReason;
+            throw new Error(`A resposta da IA estava vazia ou foi bloqueada. Motivo: ${blockReason || 'Desconhecido'}.`);
+        }
+        return response;
+    } catch (error: any) {
+        const errorMessage = error.toString().toLowerCase();
+        const isRateLimitError = errorMessage.includes('429');
+        
+        if (isRateLimitError && attempt < MAX_RETRIES) {
+            const waitTime = Math.min(60000, (2 ** attempt) * 1000 + Math.random() * 2000); // Exponential backoff with jitter
+            const logMessage = `Limite de taxa da API atingido (tentativa ${attempt}). Tentando novamente em ${Math.round(waitTime / 1000)}s...`;
+            logError({
+                source: 'geminiService.throttler',
+                message: logMessage,
+                severity: 'warning',
+                details: { error: error.message },
+            });
+            await new Promise(res => setTimeout(res, waitTime));
+            return callGeminiThrottled(parts, isJsonMode, logError, attempt + 1);
+        } else {
+             const finalErrorMessage = isRateLimitError
+                ? `Limite de taxa da API excedido após múltiplas tentativas. Verifique seu plano e faturamento.`
+                : `Falha na API Gemini após ${attempt} tentativas. Erro: ${error.message}`;
+             throw new Error(finalErrorMessage);
+        }
+    }
+};
+
+const _callGeminiApiOnce = async (
+    parts: Part[],
+    isJsonMode: boolean
+): Promise<GeminiApiResponse> => {
+    const model = DEFAULT_MODEL;
+    const payload = {
+        contents: [{ parts }],
+        ...(isJsonMode && { generationConfig: { responseMimeType: 'application/json' } })
+    };
+
+    try {
+        console.debug(`[GeminiService] Tentando API via proxy...`);
+        const proxyResponse = await fetch(`${GEMINI_PROXY_URL}/${model}:generateContent`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        });
+        if (!proxyResponse.ok) throw new Error(`Proxy error status: ${proxyResponse.status} ${proxyResponse.statusText}`);
+        const proxyData = await proxyResponse.json();
+        if (proxyData.error) throw new Error(`Proxy response error: ${proxyData.error.message}`);
+        const responseText = proxyData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        return { ...proxyData, text: responseText, json: () => proxyData };
+    } catch (error) {
+        console.warn("[GeminiService] Proxy falhou. Usando API direta.", error);
+        const apiKey = getApiKey();
+        if (!apiKey) throw new Error("API Key não encontrada para fallback direto.");
+
+        const directResponse = await fetch(`${GEMINI_DIRECT_URL}/${model}:generateContent?key=${apiKey}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        });
+        const directData = await directResponse.json();
+        if (!directResponse.ok) {
+            const apiErrorMsg = directData?.error?.message || 'Erro desconhecido na API direta.';
+            throw new Error(`Direct API error: ${directResponse.status} - ${apiErrorMsg}`);
+        }
+        if (directData.error) throw new Error(`Direct API response error: ${directData.error.message}`);
+        console.debug("[GeminiService] Fallback direto bem-sucedido.");
+        const responseText = directData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        return { ...directData, text: responseText, json: () => directData };
+    }
 };
 
 // --- Helper Functions ---
 
-const estimateTokens = (text: string): number => {
-    return Math.ceil(text.length / 4);
-};
+export const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
 
-const callGeminiWithRetry = async (
-    promptParts: (string | Part)[], 
-    logError: (error: Omit<LogError, 'timestamp'>) => void,
-    isJsonMode: boolean = true
-): Promise<GenerateContentResponse> => {
-    const ai = getAiInstance();
-    const model = 'gemini-2.5-flash';
-    const MAX_RETRIES = 3;
-    let lastError: any = null;
-
-    let mutableParts: Part[] = promptParts.map(part =>
-        typeof part === 'string' ? { text: part } : part
-    );
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            console.log(`DEBUG: Chamada da API Gemini (tentativa ${attempt}/${MAX_RETRIES}). Tamanho do payload: ${JSON.stringify(mutableParts).length} caracteres.`);
-            
-            const response = await ai.models.generateContent({
-                model,
-                contents: { parts: mutableParts },
-                config: isJsonMode ? { responseMimeType: 'application/json' } : {}
-            });
-            
-            if (!response.text) {
-                 const blockReason = response.promptFeedback?.blockReason;
-                 const finishReason = response.candidates?.[0]?.finishReason;
-                 throw new Error(`A resposta da IA estava vazia. Motivo do bloqueio: ${blockReason || 'N/A'}. Motivo da finalização: ${finishReason || 'N/A'}.`);
-            }
-            return response;
-        } catch (error: any) {
-            lastError = error;
-            const errorMessage = error.toString().toLowerCase();
-            const isRetriableError = errorMessage.includes('500') || errorMessage.includes('internal error') || errorMessage.includes('429');
-            
-            if (isRetriableError && attempt < MAX_RETRIES) {
-                const waitTime = (2 ** (attempt - 1)) * 2000; // 2s, 4s
-                logError({
-                    source: 'geminiService',
-                    message: `Falha na chamada da API Gemini (tentativa ${attempt}/${MAX_RETRIES}). Reduzindo payload e tentando novamente em ${waitTime / 1000}s...`,
-                    severity: 'warning',
-                    details: { error: error.message },
-                });
-
-                mutableParts = mutableParts.map(part => 
-                    'text' in part && part.text
-                        ? { ...part, text: part.text.substring(0, Math.ceil(part.text.length / 2)) } 
-                        : part
-                );
-
-                await new Promise(res => setTimeout(res, waitTime));
-            } else {
-                 try {
-                    localStorage.setItem('lastFailedGeminiPayload', JSON.stringify({ parts: mutableParts }));
-                 } catch (e) { /* ignore storage errors */ }
-                 throw new Error(`Falha na API Gemini após ${attempt} tentativas. O último payload que causou o erro foi salvo no localStorage. Erro: ${error.message}`);
-            }
-        }
-    }
-    throw lastError;
-};
-
-const parseGeminiJsonResponse = <T>(text: string, logError: (error: Omit<LogError, 'timestamp'>) => void): T => {
+export const parseGeminiJsonResponse = <T>(text: string, logError: (error: Omit<LogError, 'timestamp'>) => void): T => {
     try {
         return JSON.parse(text) as T;
     } catch (e) {
@@ -105,7 +141,7 @@ const parseGeminiJsonResponse = <T>(text: string, logError: (error: Omit<LogErro
     }
 };
 
-const getFileContentForAnalysis = async (
+export const getFileContentForAnalysis = async (
     files: File[],
     updatePipelineStep: (index: number, status: ProcessingStepStatus, info?: string) => void,
     logError: (error: Omit<LogError, 'timestamp'>) => void
@@ -122,348 +158,283 @@ const getFileContentForAnalysis = async (
             }
         } catch (e) {
             logError({
-                source: 'fileParser',
-                message: `Falha ao processar o arquivo ${file.name}`,
-                severity: 'warning',
-                details: e,
+                source: 'fileParser', message: `Falha ao processar o arquivo ${file.name}`, severity: 'warning', details: e,
             });
         }
     }
     return parsedFileContents;
 }
 
+export const getFullContentForIndexing = async (
+    files: File[],
+    logError: (error: Omit<LogError, 'timestamp'>) => void
+): Promise<{fileName: string, content: string}[]> => {
+     const fullFileContents: {fileName: string, content: string}[] = [];
+    for (const file of files) {
+        try {
+            const content = await extractFullTextFromFile(file);
+            if (content && content.length > 50) {
+                 fullFileContents.push({ fileName: file.name, content });
+            }
+        } catch (e) {
+            logError({
+                source: 'getFullContentForIndexing', message: `Falha ao extrair conteúdo de ${file.name} para indexação.`, severity: 'warning', details: e,
+            });
+        }
+    }
+    return fullFileContents;
+};
 
-// --- Exported Service Functions ---
+// --- Refactored Service Functions ---
 
-/**
- * Layer 1: Executive Analysis.
- * Generates a high-level summary from files. Fast and token-efficient.
- */
 export const generateReportFromFiles = async (
-  files: File[],
-  updatePipelineStep: (index: number, status: ProcessingStepStatus, info?: string) => void,
+  fileContents: {fileName: string, content: string}[],
+  classifications: ClassificationResult[],
   logError: (error: Omit<LogError, 'timestamp'>) => void
 ): Promise<ExecutiveSummary> => {
     const startTime = performance.now();
-    updatePipelineStep(0, ProcessingStepStatus.IN_PROGRESS, `Processando ${files.length} arquivo(s)...`);
-    const fileContents = await getFileContentForAnalysis(files, updatePipelineStep, logError);
-    const combinedContent = fileContents.map(f => `--- INÍCIO DO ARQUIVO: ${f.fileName} ---\n${f.content}\n--- FIM DO ARQUIVO: ${f.fileName} ---`).join('\n\n');
-    updatePipelineStep(0, ProcessingStepStatus.COMPLETED);
-
-    // Simulate intermediate steps
-    updatePipelineStep(1, ProcessingStepStatus.IN_PROGRESS, "Agente Auditor: Verificando consistência...");
-    await new Promise(res => setTimeout(res, 300));
-    updatePipelineStep(1, ProcessingStepStatus.COMPLETED);
-    updatePipelineStep(2, ProcessingStepStatus.IN_PROGRESS, "Agente Classificador: Organizando informações...");
-    await new Promise(res => setTimeout(res, 300));
-    updatePipelineStep(2, ProcessingStepStatus.COMPLETED);
-    
-    updatePipelineStep(3, ProcessingStepStatus.IN_PROGRESS, "Agente de Inteligência: Gerando análise executiva...");
-    
-    const totalTokens = estimateTokens(combinedContent);
-    logError({ source: 'geminiService.executive', message: `Iniciando análise executiva. Payload: ${combinedContent.length} chars, Tokens estimados: ${totalTokens}`, severity: 'info' });
-
-    const prompt = `
-      Você é um especialista em contabilidade e análise fiscal no Brasil. Analise o conteúdo dos seguintes arquivos fiscais e gere UM RESUMO EXECUTIVO.
-      O conteúdo fornecido é uma concatenação de vários arquivos ou resumos de arquivos. Cada um é delimitado por marcadores "--- INÍCIO/FIM DO ARQUIVO ---".
-
-      Sua tarefa é gerar APENAS um objeto JSON para a chave "executiveSummary" com a seguinte estrutura (use os tipos de dados exatos):
-      - title (string): Um título conciso para o relatório. Ex: "Análise Fiscal Consolidada".
-      - description (string): Uma breve descrição do período ou dos documentos analisados.
-      - keyMetrics (object): Um objeto com as seguintes métricas calculadas a partir de TODOS os arquivos:
-        - numeroDeDocumentosValidos (number): Conte o número de documentos distintos e válidos.
-        - valorTotalDasNfes (number): Some o valor total de todas as NF-es encontradas.
-        - valorTotalDosProdutos (number): Some o valor total dos produtos.
-        - indiceDeConformidadeICMS (string): Uma porcentagem estimada da conformidade de ICMS (ex: "98.7%").
-        - nivelDeRiscoTributario ('Baixo' | 'Média' | 'Alto'): Avalie o risco geral.
-        - estimativaDeNVA (number): "Necessidade de Verba de Anulação". Calcule se possível, senão, 0.
-        - valorTotalDeICMS (number): Some todo o ICMS.
-        - valorTotalDePIS (number): Some todo o PIS.
-        - valorTotalDeCOFINS (number): Some todo o COFINS.
-        - valorTotalDeISS (number): Some todo o ISS.
-      - actionableInsights (array of objects): Uma lista de 2-4 insights importantes, cada um sendo um objeto com "text" (string).
-      - csvInsights (array of objects, opcional): Se houver resumos de CSV, gere um insight para cada. Cada objeto deve ter: fileName (string), insight (string), rowCount (number).
-
-      Responda APENAS com o objeto JSON, sem markdown ou texto explicativo.
-    `;
-    const promptParts = [{text: prompt}, {text: `\n\nCONTEÚDO DOS ARQUIVOS:\n${combinedContent}`}];
-
-    try {
-        const response = await callGeminiWithRetry(promptParts, logError, true);
-        const report = parseGeminiJsonResponse<{ executiveSummary: ExecutiveSummary }>(response.text, logError);
-        
-        if (!report || !report.executiveSummary) {
-            throw new Error("A estrutura do resumo executivo da IA é inválida.");
-        }
-        
-        updatePipelineStep(3, ProcessingStepStatus.COMPLETED);
-        updatePipelineStep(4, ProcessingStepStatus.IN_PROGRESS, "Agente Contador: Finalizando resumo...");
-        await new Promise(res => setTimeout(res, 300));
-        
-        const endTime = performance.now();
-        logError({ source: 'geminiService.executive', message: `Análise executiva concluída em ${(endTime - startTime).toFixed(2)} ms.`, severity: 'info' });
-        
-        return report.executiveSummary;
-    } catch(err) {
-        logError({
-            source: 'geminiService.generateReport',
-            message: 'Falha ao gerar resumo executivo com a IA.',
-            severity: 'critical',
-            details: err,
-        });
-        throw err;
-    }
-};
-
-/**
- * Layer 4: Full Text Analysis.
- * Generates a detailed text analysis on-demand. Can be token-intensive.
- */
-export const generateFullTextAnalysis = async (
-    files: File[],
-    logError: (error: Omit<LogError, 'timestamp'>) => void,
-    onProgress: (message: string) => void
-): Promise<string> => {
-     const startTime = performance.now();
-     onProgress('Extraindo conteúdo dos arquivos...');
-     const fileContents = await getFileContentForAnalysis(files, () => {}, logError);
-     const combinedContent = fileContents.map(f => f.content).join('\n\n');
-     const totalTokens = estimateTokens(combinedContent);
-
-     logError({ source: 'geminiService.fullText', message: `Iniciando análise completa. ${fileContents.length} arquivos, ${totalTokens} tokens estimados.`, severity: 'info' });
-
-     try {
-        // Chunking Strategy
-        if (totalTokens > CHUNK_TOKEN_THRESHOLD) {
-            onProgress(`Payload grande detectado. Analisando ${fileContents.length} arquivos individualmente...`);
-            const individualAnalyses: string[] = [];
-            for (let i = 0; i < fileContents.length; i++) {
-                const file = fileContents[i];
-                onProgress(`Analisando arquivo ${i + 1}/${fileContents.length}: ${file.fileName}`);
-                const chunkPrompt = `Você é um analista fiscal. Forneça uma análise textual detalhada, em markdown, do seguinte documento fiscal:\n\n${file.content}`;
-                const response = await callGeminiWithRetry([chunkPrompt], logError, false);
-                individualAnalyses.push(`--- ANÁLISE DO ARQUIVO: ${file.fileName} ---\n${response.text}`);
-            }
-
-            onProgress('Sintetizando o relatório final...');
-            const synthesisPrompt = `Você é um editor sênior. Combine as seguintes análises individuais em um único relatório textual coeso e bem-estruturado em markdown. Remova redundâncias e crie uma narrativa fluida.\n\n${individualAnalyses.join('\n\n')}`;
-            const finalResponse = await callGeminiWithRetry([synthesisPrompt], logError, false);
-            const endTime = performance.now();
-            logError({ source: 'geminiService.fullText', message: `Análise completa (em lotes) concluída em ${(endTime - startTime).toFixed(2)} ms.`, severity: 'info' });
-            return finalResponse.text;
-        } else {
-            const prompt = `
-                Você é um especialista em contabilidade e análise fiscal no Brasil. Com base no conteúdo dos arquivos fiscais fornecidos, gere uma ANÁLISE TEXTUAL COMPLETA e detalhada.
-                Use markdown para formatação (títulos, listas, negrito).
-                Estruture sua análise em seções claras, como "Visão Geral", "Pontos de Atenção", "Análise de Impostos (ICMS, PIS/COFINS)", "Recomendações", etc.
-                Seja o mais detalhista possível.
-
-                CONTEÚDO DOS ARQUIVOS:
-                ${combinedContent}
-            `;
-            const response = await callGeminiWithRetry([prompt], logError, false);
-            const endTime = performance.now();
-            logError({ source: 'geminiService.fullText', message: `Análise completa (unificada) concluída em ${(endTime - startTime).toFixed(2)} ms.`, severity: 'info' });
-            return response.text;
-        }
-     } catch(err) {
-        logError({
-            source: 'geminiService.fullText',
-            message: 'Falha ao gerar análise textual completa com a IA.',
-            severity: 'critical',
-            details: err,
-        });
-        throw err;
-     }
-}
-
-
-/**
- * Layer 2: Tax Simulation (Optimized).
- * The AI is now used only for textual interpretation of pre-calculated scenarios.
- */
-export const simulateTaxScenario = async (
-    calculatedScenarios: TaxScenario[],
-    logError: (error: Omit<LogError, 'timestamp'>) => void
-): Promise<SimulationResult> => {
-    const startTime = performance.now();
-    logError({ source: 'geminiService.simulate', message: 'Iniciando interpretação de cenários tributários...', severity: 'info' });
-
-    // Remove textual recommendations from the payload sent to the AI to avoid influencing it
-    const scenariosForAI = calculatedScenarios.map(({ recomendacoes, ...scenario }) => scenario);
-
-    const prompt = `
-        Você é um consultor fiscal sênior. Com base nos CÁLCULOS de cenários tributários fornecidos abaixo, sua tarefa é gerar APENAS a parte textual da análise: um resumo executivo, a recomendação principal e recomendações específicas para cada cenário.
-
-        DADOS CALCULADOS (NÃO ALTERAR):
-        ${JSON.stringify(scenariosForAI, null, 2)}
-
-        Sua tarefa é gerar uma resposta JSON com a seguinte estrutura:
-        - resumoExecutivo (string): Um parágrafo conciso (2-3 sentenças) resumindo os resultados e a principal diferença entre os cenários.
-        - recomendacaoPrincipal (string): O nome do cenário mais vantajoso (ex: "Lucro Presumido").
-        - recomendacoesPorCenario (object): Um objeto onde cada chave é o nome de um cenário (ex: "Lucro Presumido") e o valor é um array de 1-2 strings com recomendações textuais específicas para aquele regime.
-
-        Seja analítico e direto. Responda APENAS com o objeto JSON.
-    `;
-    const promptParts = [{ text: prompt }];
-    
-    try {
-        const response = await callGeminiWithRetry(promptParts, logError, true);
-        const textualAnalysis = parseGeminiJsonResponse<{
-            resumoExecutivo: string;
-            recomendacaoPrincipal: string;
-            recomendacoesPorCenario: { [key: string]: string[] };
-        }>(response.text, logError);
-
-        if (!textualAnalysis || !textualAnalysis.recomendacoesPorCenario) {
-            throw new Error("A estrutura da análise textual da simulação da IA é inválida.");
-        }
-
-        // Merge AI textual insights with the original calculated numbers
-        const finalScenarios = calculatedScenarios.map(scenario => ({
-            ...scenario,
-            recomendacoes: textualAnalysis.recomendacoesPorCenario[scenario.nome] || [],
-        }));
-        
-        const finalResult: SimulationResult = {
-            resumoExecutivo: textualAnalysis.resumoExecutivo,
-            recomendacaoPrincipal: textualAnalysis.recomendacaoPrincipal,
-            cenarios: finalScenarios
-        };
-
-        const endTime = performance.now();
-        logError({ source: 'geminiService.simulate', message: `Simulação (interpretação da IA) concluída em ${(endTime - startTime).toFixed(2)} ms.`, severity: 'info' });
-        return finalResult;
-    } catch(err) {
-        logError({
-            source: 'geminiService.simulateTax',
-            message: 'Falha ao interpretar cenário com a IA.',
-            severity: 'critical',
-            details: err,
-        });
-        throw err;
-    }
-};
-
-/**
- * Layer 3: Comparative Analysis.
- */
-export const generateComparativeAnalysis = async (
-    files: File[],
-    logError: (error: Omit<LogError, 'timestamp'>) => void,
-    onProgress: (message: string) => void
-): Promise<ComparativeAnalysisReport> => {
-    const startTime = performance.now();
-    onProgress('Extraindo conteúdo para comparação...');
-    const fileContents = await getFileContentForAnalysis(files, () => {}, logError);
     const combinedContent = fileContents.map(f => f.content).join('\n\n');
     const totalTokens = estimateTokens(combinedContent);
+    const estimatedRequestTokens = totalTokens + 1000; // Prompt overhead
 
-    logError({ source: 'geminiService.compare', message: `Iniciando análise comparativa. ${fileContents.length} arquivos, ${totalTokens} tokens estimados.`, severity: 'info' });
-    
-    try {
-        let analysisResult: ComparativeAnalysisReport;
-
-        // Chunking strategy for comparison is tricky, but we can analyze individually and synthesize.
-        if (totalTokens > CHUNK_TOKEN_THRESHOLD) {
-             onProgress(`Payload grande detectado. Analisando ${fileContents.length} arquivos individualmente...`);
-             const individualSummaries: string[] = [];
-             for (let i = 0; i < fileContents.length; i++) {
-                 const file = fileContents[i];
-                 onProgress(`Analisando arquivo ${i + 1}/${fileContents.length}: ${file.fileName}`);
-                 const chunkPrompt = `Você é um analista fiscal. Extraia as métricas e características chave do seguinte documento em formato JSON. Inclua totais, impostos, e datas. Seja conciso.\n\n${file.content}`;
-                 const response = await callGeminiWithRetry([chunkPrompt], logError, false); // Not JSON mode, as it might fail, we get the text and clean it
-                 individualSummaries.push(`--- RESUMO DO ARQUIVO: ${file.fileName} ---\n${response.text}`);
-             }
-             
-             onProgress('Sintetizando o relatório comparativo...');
-             const synthesisPrompt = `
-                Você é um analista fiscal comparativo. Com base nos resumos de múltiplos arquivos fiscais, gere um relatório comparativo.
-                Sua tarefa é gerar uma resposta JSON com a seguinte estrutura:
-                - executiveSummary (string): Resumo das principais diferenças e anomalias.
-                - keyComparisons (array of objects): Compare métricas chave. Cada objeto: { metricName (string), valueFileA (string), valueFileB (string), variance (string), comment (string) }.
-                - identifiedPatterns (array of objects): Padrões repetidos. Cada objeto: { description (string), foundIn (array of strings) }.
-                - anomaliesAndDiscrepancies (array of objects): Anomalias notáveis. Cada objeto: { fileName (string), description (string), severity ('Baixa' | 'Média' | 'Alta') }.
-                Responda APENAS com o objeto JSON.
-
-                RESUMOS DOS ARQUIVOS:
-                ${individualSummaries.join('\n\n')}
-            `;
-             const finalResponse = await callGeminiWithRetry([synthesisPrompt], logError, true);
-             analysisResult = parseGeminiJsonResponse<ComparativeAnalysisReport>(finalResponse.text, logError);
-
-        } else {
-            const prompt = `
-                Você é um analista fiscal comparativo. Analise os conteúdos de múltiplos arquivos fiscais e gere um relatório comparativo.
-                Os arquivos estão concatenados abaixo.
-
-                Sua tarefa é gerar uma resposta JSON com a seguinte estrutura:
-                - executiveSummary (string): Resumo das principais diferenças e anomalias.
-                - keyComparisons (array of objects): Compare métricas chave. Cada objeto: { metricName (string), valueFileA (string), valueFileB (string), variance (string), comment (string) }.
-                - identifiedPatterns (array of objects): Padrões repetidos. Cada objeto: { description (string), foundIn (array of strings) }.
-                - anomaliesAndDiscrepancies (array of objects): Anomalias notáveis. Cada objeto: { fileName (string), description (string), severity ('Baixa' | 'Média' | 'Alta') }.
-
-                Responda APENAS com o objeto JSON.
-
-                CONTEÚDO DOS ARQUIVOS:
-                ${combinedContent}
-            `;
-            const response = await callGeminiWithRetry([prompt], logError, true);
-            analysisResult = parseGeminiJsonResponse<ComparativeAnalysisReport>(response.text, logError);
-        }
-
-        if (!analysisResult || !analysisResult.keyComparisons) {
-            throw new Error("A estrutura do relatório comparativo da IA é inválida.");
-        }
+    // Strategy Selection
+    if (estimatedRequestTokens > CHUNK_TOKEN_THRESHOLD && fileContents.length > 1) {
+        logError({ source: 'geminiService.executive', message: `Payload grande (${totalTokens} tokens). Iniciando estratégia de map-reduce incremental.`, severity: 'info' });
         
-        const endTime = performance.now();
-        logError({ source: 'geminiService.compare', message: `Análise comparativa concluída em ${(endTime - startTime).toFixed(2)} ms.`, severity: 'info' });
+        let incrementalContext = "Iniciando análise em lotes. Nenhum contexto prévio.";
+        const partialResults = [];
 
-        return analysisResult;
-    } catch(err) {
-        logError({
-            source: 'geminiService.compare',
-            message: 'Falha ao gerar análise comparativa com a IA.',
-            severity: 'critical',
-            details: err,
+        for (const file of fileContents) {
+            logError({ source: 'geminiService.mapStep', message: `Analisando lote: ${file.fileName}`, severity: 'info' });
+            const prompt = `
+                Você é um extrator de dados fiscais. Analise o conteúdo do arquivo e o contexto incremental para extrair um objeto JSON com as seguintes métricas.
+                Se uma métrica não for encontrada, retorne 0.
+                
+                [Contexto Incremental da Análise Anterior]
+                ${incrementalContext}
+                
+                [Conteúdo do Arquivo Atual: ${file.fileName}]
+                ${file.content}
+                
+                [Sua Tarefa]
+                Responda APENAS com um objeto JSON contendo:
+                {
+                  "numeroDeDocumentosValidos": number, "valorTotalDasNfes": number, "valorTotalDosProdutos": number,
+                  "valorTotalDeICMS": number, "valorTotalDePIS": number, "valorTotalDeCOFINS": number, "valorTotalDeISS": number,
+                  "actionableInsight": "Um insight conciso (máx 20 palavras) deste arquivo.",
+                  "resumoParaProximoContexto": "Um resumo técnico muito breve (máx 30 palavras) dos achados para informar a próxima análise."
+                }
+            `;
+            const response = await callGeminiThrottled([{text: prompt}], true, logError);
+            const result = parseGeminiJsonResponse<any>(response.text, logError);
+            partialResults.push(result);
+            incrementalContext = result.resumoParaProximoContexto || "Contexto anterior processado.";
+        }
+
+        // --- REDUCE STEP ---
+        const aggregatedMetrics = partialResults.reduce((acc, summary) => {
+            Object.keys(acc).forEach(key => {
+                if (typeof summary[key] === 'number') (acc as any)[key] += summary[key];
+            });
+            return acc;
+        }, {
+            numeroDeDocumentosValidos: 0, valorTotalDasNfes: 0, valorTotalDosProdutos: 0, valorTotalDeICMS: 0, valorTotalDePIS: 0, valorTotalDeCOFINS: 0, valorTotalDeISS: 0,
         });
-        throw err;
+        const collectedInsights = partialResults.map(s => s.actionableInsight).filter(Boolean);
+
+        const synthesisPrompt = `
+            Você é um especialista em contabilidade fiscal. Com base nos dados agregados e insights, gere o restante do resumo executivo em JSON.
+            [Dados Agregados] ${JSON.stringify(aggregatedMetrics, null, 2)}
+            [Insights Coletados] - ${collectedInsights.join('\n- ')}
+            [Contexto de Classificação] ${JSON.stringify(classifications, null, 2)}
+            
+            [Sua Tarefa]
+            Gere APENAS um objeto JSON com:
+            {
+              "title": "Um título conciso para o relatório.",
+              "description": "Uma breve descrição do período analisado.",
+              "indiceDeConformidadeICMS": "Uma porcentagem estimada (ex: '98.7%').",
+              "nivelDeRiscoTributario": "'Baixo', 'Média', ou 'Alto'.",
+              "actionableInsights": [ { "text": "Refine e consolide os insights em 2-4 pontos." } ]
+            }
+        `;
+        const response = await callGeminiThrottled([{text: synthesisPrompt}], true, logError);
+        const textualPart = parseGeminiJsonResponse<any>(response.text, logError);
+        
+        const finalSummary: ExecutiveSummary = {
+            ...textualPart,
+            keyMetrics: { ...aggregatedMetrics, indiceDeConformidadeICMS: textualPart.indiceDeConformidadeICMS, nivelDeRiscoTributario: textualPart.nivelDeRiscoTributario, estimativaDeNVA: 0 },
+        };
+        // FIX: The 'title' property exists on 'finalSummary', not on 'finalSummary.keyMetrics'.
+        if (!finalSummary?.title) throw new Error("A estrutura do resumo sintetizado é inválida.");
+        logError({ source: 'geminiService.executive', message: `Análise em lotes concluída em ${(performance.now() - startTime).toFixed(0)} ms.`, severity: 'info' });
+        return finalSummary;
+
+    } else {
+        // --- Original Logic for smaller payloads ---
+        logError({ source: 'geminiService.executive', message: `Payload pequeno (${totalTokens} tokens). Usando análise unificada.`, severity: 'info' });
+        const prompt = `
+          Você é um especialista em contabilidade e análise fiscal no Brasil. Analise o conteúdo fiscal e o contexto de classificação fornecidos para gerar UM RESUMO EXECUTIVO.
+          [Contexto de Classificação] ${JSON.stringify(classifications, null, 2)}
+          [Conteúdo dos Arquivos] ${combinedContent}
+
+          [Sua Tarefa]
+          Responda APENAS com um objeto JSON para a chave "executiveSummary" com a seguinte estrutura:
+          {
+            "title": "Análise Fiscal Consolidada de...",
+            "description": "Breve descrição dos documentos analisados.",
+            "keyMetrics": {
+              "numeroDeDocumentosValidos": number, "valorTotalDasNfes": number, "valorTotalDosProdutos": number,
+              "indiceDeConformidadeICMS": "string (ex: '98.7%')", "nivelDeRiscoTributario": "'Baixo' | 'Média' | 'Alto'",
+              "estimativaDeNVA": 0, "valorTotalDeICMS": number, "valorTotalDePIS": number, "valorTotalDeCOFINS": number, "valorTotalDeISS": number
+            },
+            "actionableInsights": [ { "text": "string" } ],
+            "csvInsights": [ { "fileName": "string", "insight": "string", "rowCount": number } ]
+          }
+        `;
+        const response = await callGeminiThrottled([{text: prompt}], true, logError);
+        const report = parseGeminiJsonResponse<{ executiveSummary: ExecutiveSummary }>(response.text, logError);
+        if (!report?.executiveSummary?.keyMetrics) throw new Error("A estrutura do resumo executivo da IA é inválida.");
+        logError({ source: 'geminiService.executive', message: `Análise unificada concluída em ${(performance.now() - startTime).toFixed(0)} ms.`, severity: 'info' });
+        return report.executiveSummary;
     }
 };
 
-/**
- * Converts files to Gemini Parts for chat analysis.
- */
+// Other analysis functions (fullText, comparative, simulate) would be refactored similarly,
+// applying the same sequential, throttled, and incremental context pattern.
+// For brevity, only the main report generation is fully refactored here.
+
+export const generateFullTextAnalysis = async (
+    files: File[], logError: (error: Omit<LogError, 'timestamp'>) => void, onProgress: (message: string) => void
+): Promise<string> => {
+    onProgress('Extraindo conteúdo para análise completa...');
+    const fileContents = await getFileContentForAnalysis(files, () => {}, logError);
+    let combinedAnalysis = "# Análise Textual Completa\n\n";
+    let incrementalContext = "Iniciando análise textual detalhada.";
+    
+    for (let i = 0; i < fileContents.length; i++) {
+        const file = fileContents[i];
+        onProgress(`Analisando arquivo ${i + 1}/${fileContents.length}: ${file.fileName}`);
+        const prompt = `
+            Você é um analista fiscal. Forneça uma análise textual detalhada em markdown do documento fiscal abaixo.
+            [Contexto da Análise Anterior] ${incrementalContext}
+            [Conteúdo do Arquivo Atual: ${file.fileName}] ${file.content}
+            [Sua Tarefa]
+            Gere a análise para o arquivo atual e um resumo técnico (máx 30 palavras) para o próximo contexto.
+            Responda APENAS com um JSON: { "analise": "sua análise em markdown aqui", "resumoParaProximoContexto": "seu resumo aqui" }
+        `;
+        try {
+            const response = await callGeminiThrottled([{ text: prompt }], true, logError);
+            const result = parseGeminiJsonResponse<{ analise: string, resumoParaProximoContexto: string }>(response.text, logError);
+            combinedAnalysis += `## Análise do Arquivo: ${file.fileName}\n\n${result.analise}\n\n---\n\n`;
+            incrementalContext = result.resumoParaProximoContexto;
+        } catch (chunkError) {
+            combinedAnalysis += `## Análise do Arquivo: ${file.fileName}\n\n**ERRO:** Não foi possível gerar a análise para este arquivo.\n\n---\n\n`;
+        }
+    }
+    return combinedAnalysis;
+};
+
+export const simulateTaxScenario = async (
+    calculatedScenarios: TaxScenario[], logError: (error: Omit<LogError, 'timestamp'>) => void
+): Promise<SimulationResult> => {
+    const scenariosForAI = calculatedScenarios.map(({ recomendacoes, ...scenario }) => scenario);
+    const prompt = `
+        Você é um consultor fiscal sênior. Com base nos CÁLCULOS de cenários tributários, gere a análise textual.
+        [Dados Calculados] ${JSON.stringify(scenariosForAI, null, 2)}
+        [Sua Tarefa]
+        Responda APENAS com um JSON contendo:
+        {
+          "resumoExecutivo": "Um parágrafo conciso resumindo os resultados.",
+          "recomendacaoPrincipal": "O nome do cenário mais vantajoso (ex: 'Lucro Presumido').",
+          "recomendacoesPorCenario": { "NomeDoCenario": ["recomendação 1", "recomendação 2"] }
+        }
+    `;
+    const response = await callGeminiThrottled([{ text: prompt }], true, logError);
+    const textualAnalysis = parseGeminiJsonResponse<any>(response.text, logError);
+    if (!textualAnalysis?.recomendacoesPorCenario) throw new Error("A estrutura da análise textual da simulação é inválida.");
+    
+    const finalScenarios = calculatedScenarios.map(scenario => ({
+        ...scenario,
+        recomendacoes: textualAnalysis.recomendacoesPorCenario[scenario.nome] || [],
+    }));
+    
+    return {
+        resumoExecutivo: textualAnalysis.resumoExecutivo,
+        recomendacaoPrincipal: textualAnalysis.recomendacaoPrincipal,
+        cenarios: finalScenarios
+    };
+};
+
+export const generateComparativeAnalysis = async (
+    files: File[], logError: (error: Omit<LogError, 'timestamp'>) => void, onProgress: (message: string) => void
+): Promise<ComparativeAnalysisReport> => {
+    onProgress('Extraindo conteúdo para comparação...');
+    const fileContents = await getFileContentForAnalysis(files, () => {}, logError);
+    
+    let incrementalContext = "Iniciando análise comparativa.";
+    const summaries = [];
+
+    for (let i = 0; i < fileContents.length; i++) {
+        const file = fileContents[i];
+        onProgress(`Resumindo arquivo ${i + 1}/${fileContents.length}: ${file.fileName}`);
+        const prompt = `
+          Extraia as métricas e características chave do documento em JSON. Seja conciso.
+          [Contexto Anterior] ${incrementalContext}
+          [Conteúdo Atual: ${file.fileName}] ${file.content}
+          [Sua Tarefa] Responda com um JSON: { "resumo": { ...dados chave }, "resumoParaProximoContexto": "resumo técnico de 20 palavras" }
+        `;
+        const response = await callGeminiThrottled([{text: prompt}], true, logError);
+        const result = parseGeminiJsonResponse<any>(response.text, logError);
+        summaries.push({ fileName: file.fileName, summary: result.resumo });
+        incrementalContext = result.resumoParaProximoContexto;
+    }
+
+    onProgress('Sintetizando o relatório comparativo...');
+    const synthesisPrompt = `
+        Você é um analista fiscal comparativo. Com base nos resumos, gere um relatório comparativo.
+        [Resumos dos Arquivos] ${JSON.stringify(summaries, null, 2)}
+        [Sua Tarefa]
+        Gere APENAS um objeto JSON com a estrutura:
+        {
+          "executiveSummary": "Resumo das principais diferenças e anomalias.",
+          "keyComparisons": [ { "metricName": string, "valueFileA": string, "valueFileB": string, "variance": string, "comment": string } ],
+          "identifiedPatterns": [ { "description": string, "foundIn": string[] } ],
+          "anomaliesAndDiscrepancies": [ { "fileName": string, "description": string, "severity": "'Baixa' | 'Média' | 'Alta'" } ]
+        }
+    `;
+    const finalResponse = await callGeminiThrottled([{ text: synthesisPrompt }], true, logError);
+    const analysisResult = parseGeminiJsonResponse<ComparativeAnalysisReport>(finalResponse.text, logError);
+    if (!analysisResult?.keyComparisons) throw new Error("A estrutura do relatório comparativo é inválida.");
+    return analysisResult;
+};
+
 export const convertFilesToGeminiParts = async (files: File[]): Promise<Part[]> => {
     const fileToGenerativePart = async (file: File): Promise<Part | null> => {
-        // Simple file type check based on extension
         const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!allowedImageTypes.includes(file.type)) return null;
-
         const base64EncodedData = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
             reader.onerror = (error) => reject(error);
             reader.readAsDataURL(file);
         });
-        return {
-            inlineData: {
-                data: base64EncodedData,
-                mimeType: file.type,
-            },
-        };
+        return { inlineData: { data: base64EncodedData, mimeType: file.type } };
     };
     
     const fileProcessingPromises = files.map(async (file) => {
-        const mimeType = file.type || '';
-        if (mimeType.startsWith('image/')) {
-            return fileToGenerativePart(file);
-        }
-        
+        if (file.type.startsWith('image/')) return fileToGenerativePart(file);
         const parsedResult = await parseFile(file, () => {});
         return { text: `\n--- START FILE: ${file.name} ---\n${parsedResult.content}\n--- END FILE: ${file.name} ---\n` };
     });
 
     const results = await Promise.all(fileProcessingPromises);
     return results.filter((p): p is Part => p !== null);
+};
+
+export const getChatCompletion = async (
+    prompt: string, logError: (error: Omit<LogError, 'timestamp'>) => void
+): Promise<string> => {
+    const response = await callGeminiThrottled([{ text: prompt }], false, logError);
+    return response.text;
 };

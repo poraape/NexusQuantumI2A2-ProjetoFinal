@@ -1,83 +1,100 @@
 # Nexus QuantumI2A2 - Interactive Insight & Intelligence from Fiscal Analysis
 
-![Logo](https://raw.githubusercontent.com/user/repo/main/docs/logo.png) <!-- Placeholder para logo -->
-
-**Nexus QuantumI2A2** é uma plataforma de análise fiscal avançada que utiliza um sistema multi-agente de IA para automatizar o processamento, validação e extração de insights de documentos fiscais brasileiros. A interface web interativa permite que os usuários submetam arquivos complexos e recebam relatórios detalhados, simulações tributárias e análises comparativas em tempo real.
+**Nexus QuantumI2A2** é um ecossistema de inteligência fiscal que transforma documentos tributários complexos em insights acionáveis. Utilizando um sistema multi-agente simulado pela API Google Gemini, a plataforma automatiza o processamento, validação e análise de uma vasta gama de arquivos fiscais brasileiros, entregando relatórios interativos, simulações e um assistente de IA contextual.
 
 ---
 
 ## Principais Funcionalidades
 
-- **Análise Multimodal e Especializada de Arquivos**: Faça o upload de múltiplos arquivos em diversos formatos. O sistema utiliza bibliotecas especializadas para um pré-processamento inteligente:
-  - **NF-e (XML)**: Validação e conversão automática para JSON para análise estruturada.
-  - **PDF com OCR**: Extração de texto de PDFs nativos e digitalizados (imagens) com alta precisão.
-  - **CSV**: Parsing eficiente de grandes volumes de dados, com amostragem automática para otimização de tokens.
-  - **SPED**: Leitura e extração de resumos estruturados dos principais blocos de arquivos fiscais.
-  - **Outros Formatos**: Suporte para `.ZIP` (com extração automática), `.JSON`, `.DOCX`, `.XLSX`, `.TXT` e imagens.
-- **Dashboard Interativo e Completo**: Após a análise, um dashboard dinâmico apresenta:
-  - **Resumo Executivo**: Métricas chave consolidadas (Valor Total de NF-e, Risco Tributário, etc.).
-  - **Gráficos Visuais**: Composição de impostos e tendências de faturamento.
-  - **Insights Acionáveis**: Recomendações práticas geradas pela IA.
-  - **Análise Textual Completa**: O relatório detalhado da IA sobre cada arquivo.
-- **Simulador Tributário Inteligente**: Projete e compare cenários fiscais (`Lucro Presumido`, `Lucro Real`, `Simples Nacional`) para otimizar a carga tributária com base nos dados analisados.
-- **Análise Comparativa**: Compare dois ou mais relatórios para identificar automaticamente padrões, anomalias e discrepâncias entre eles.
-- **Chat com IA Contextual e Análise de Arquivos**: Converse com a IA para aprofundar a análise do relatório, fazer perguntas específicas e **anexar novos arquivos diretamente no chat** para obter respostas contextuais e enriquecidas com gráficos.
+A plataforma opera com uma arquitetura de **análise em camadas**, permitindo que o usuário comece com uma visão geral rápida e aprofunde a investigação sob demanda, otimizando performance e custos de API.
 
-## Arquitetura e Tecnologias
+#### 1. **Processamento Inteligente de Arquivos**
+- **Amplo Suporte a Formatos:** Faça upload de múltiplos arquivos, incluindo `XML` (NF-e), `PDF` (com OCR integrado para documentos digitalizados), `CSV`, `SPED`, `DOCX`, `XLSX`, `TXT`, `JSON` e imagens.
+- **Extração Automática de `.zip`:** Arquivos compactados são descompactados e processados individualmente no cliente.
+- **Parsing Especializado:** O sistema utiliza parsers específicos para cada formato, extraindo e estruturando dados de forma otimizada para a análise da IA.
 
-O Nexus QuantumI2A2 é um Single Page Application (SPA) moderno, construído com foco em performance e uma experiência de usuário fluida.
+#### 2. **Dashboard de Análise Executiva**
+- **Visão Imediata:** Logo após o processamento, um dashboard interativo apresenta um resumo executivo com as principais métricas, como Valor Total de NF-e, Risco Tributário, composição de impostos e tendências de faturamento.
+- **Insights Acionáveis:** A IA fornece uma lista de pontos de atenção e recomendações com base na análise inicial.
 
-- **Frontend**:
-  - **Framework**: React 18 com TypeScript.
-  - **Estilização**: Tailwind CSS com um sistema de temas (Dark/Light).
-  - **Componentes e Visualização**: [Tremor React](https://www.tremor.so/) para gráficos e componentes de UI.
-  - **Módulos**: ES Modules nativos, gerenciados via `importmap` no `index.html` (sem `npm` ou bundler).
-- **Inteligência Artificial**:
-  - **API**: Google Gemini API (`gemini-2.5-flash`).
-- **Bibliotecas de Parsing Especializado**:
-  - **`papaparse`**: Para parsing de arquivos CSV.
-  - **`pdfjs-dist`**: Para renderização e leitura de arquivos PDF.
-  - **`tesseract.js`**: Para reconhecimento óptico de caracteres (OCR) em PDFs baseados em imagem.
-  - **`xml-js`**: Para a conversão de XML para JSON.
-  - **`jszip`**: Para descompactação de arquivos `.zip` no cliente.
+#### 3. **Simulador Tributário Inteligente**
+- **Otimização Fiscal:** Projete cenários para os regimes `Lucro Presumido`, `Lucro Real` e `Simples Nacional`.
+- **Análise Híbrida:** Os cálculos de impostos são realizados localmente para precisão, e a IA gera a análise textual, recomendações e o resumo comparativo.
+
+#### 4. **Análise Comparativa (Sob Demanda)**
+- **Detecção de Anomalias:** Envie dois ou mais conjuntos de arquivos para que a IA realize uma comparação profunda, identificando automaticamente discrepâncias, padrões e anomalias entre eles.
+
+#### 5. **Análise Textual Completa (Sob Demanda)**
+- **Investigação Profunda:** Para uma análise detalhada, solicite um relatório textual completo. A IA processa o conteúdo integral dos documentos para gerar uma análise exaustiva, ideal para auditorias.
+
+#### 6. **Chat Interativo com RAG (Retrieval-Augmented Generation)**
+- **Consultoria Contextual:** Converse com a IA, que responde com base no conteúdo completo dos documentos previamente indexados em uma base vetorial local.
+- **Anexo de Arquivos no Chat:** Anexe novos arquivos diretamente na conversa para obter respostas imediatas sobre eles, sem a necessidade de um novo processamento completo.
+
+---
+
+## Arquitetura e Pilha Tecnológica
+
+Nexus QuantumI2A2 é um **Single Page Application (SPA)** moderno, projetado para operar com máxima eficiência no cliente, garantindo privacidade e performance.
+
+- **Arquitetura "No-Build"**: O projeto é executado diretamente no navegador sem a necessidade de um processo de build (Webpack, Vite). As dependências são gerenciadas via `importmap` no `index.html`.
+
+- **Pilha Tecnológica**:
+  - **Frontend**: React 18 com TypeScript.
+  - **Estilização**: Tailwind CSS (via CDN) com um sistema de temas customizável (Dark/Light).
+  - **Componentes de UI & Gráficos**: [Tremor React](https://www.tremor.so/), para dashboards, gráficos e tabelas interativas.
+  - **Inteligência Artificial**: API Google Gemini (modelo `gemini-2.5-flash`), orquestrada através de um serviço com um **mecanismo de fallback inteligente** que alterna automaticamente entre um proxy e a API direta para garantir alta disponibilidade.
+
+- **Bibliotecas de Parsing no Cliente**:
+  - **`jszip`**: Descompactação de arquivos `.zip`.
+  - **`xml-js`**: Conversão de XML (NF-e) para JSON.
+  - **`papaparse`**: Parsing de arquivos `.csv`.
+  - **`pdfjs-dist`**: Leitura e extração de texto de arquivos PDF nativos.
+  - **`tesseract.js`**: Reconhecimento Óptico de Caracteres (OCR) em PDFs baseados em imagem.
+
+---
+
+## Sistema de Memória Cognitiva
+
+A aplicação utiliza o `localStorage` do navegador para implementar um sistema de "memória" que aprimora a experiência do usuário e otimiza o desempenho.
+
+- **Índice de Documentos (RAG):** O conteúdo dos arquivos é segmentado, vetorizado (através de palavras-chave) e armazenado localmente, permitindo que o Chat Interativo realize buscas de similaridade para encontrar o contexto relevante para cada pergunta.
+- **Cache de Q&A:** Perguntas e respostas do chat são cacheadas para fornecer respostas instantâneas a perguntas repetidas.
+- **Cache de Simulação:** Resultados de simulações tributárias são armazenados para evitar recálculos e novas chamadas de API para os mesmos parâmetros.
+- **Resumo da Última Sessão:** O resumo executivo da última análise é salvo, permitindo a restauração rápida do dashboard ao reabrir a aplicação.
+
+---
 
 ## Estrutura do Projeto
 
 ```
 /
 ├── components/         # Componentes React reutilizáveis
-│   ├── dashboard/      # Componentes específicos do Dashboard
-│   └── icons/          # Ícones SVG
-├── contexts/           # React Context Providers (ErrorLogContext)
-├── hooks/              # Hooks customizados (useErrorLog)
-├── services/           # Lógica de negócio e comunicação com APIs
-│   ├── geminiService.ts # Orquestrador de chamadas para a API Gemini
-│   └── fileParsers.ts   # Módulo com parsers especializados por tipo de arquivo
-├── App.tsx             # Componente principal da aplicação
-├── index.html          # Ponto de entrada HTML (contém o importmap)
-├── index.tsx           # Ponto de entrada do React
+│   ├── dashboard/      # Componentes específicos do Dashboard de análise
+│   └── icons/          # Ícones SVG como componentes
+├── contexts/           # Provedores de Contexto React (ex: ErrorLogContext)
+├── hooks/              # Hooks customizados (ex: useErrorLog)
+├── services/           # Lógica de negócio, parsers e comunicação com APIs
+│   ├── geminiService.ts # Orquestrador de chamadas para a API Gemini e prompts
+│   ├── fileParsers.ts   # Módulo com parsers especializados por tipo de arquivo
+│   ├── taxCalculator.ts # Lógica para os cálculos do simulador tributário
+│   └── contextMemory.ts # Gerenciamento do RAG, cache e estado no localStorage
 ├── types.ts            # Definições de tipos TypeScript globais
+├── App.tsx             # Componente raiz da aplicação
+├── index.html          # Ponto de entrada HTML (contém o importmap de dependências)
+├── index.tsx           # Ponto de montagem do React no DOM
 └── README.md           # Este arquivo
 ```
 
-## Instalação e Execução
+---
 
-Este projeto foi desenhado para ser executado diretamente no navegador sem a necessidade de um processo de build (como Webpack ou Vite).
+## Instalação e Execução Local
 
 ### Pré-requisitos
+1.  **Chave da API Google Gemini**: Obtenha uma chave de API válida no [Google AI Studio](https://aistudio.google.com/app/apikey).
+2.  **Servidor Web Local**: Um servidor simples para servir arquivos estáticos.
 
-1.  **Chave da API Google Gemini**: Você precisa de uma chave de API válida para o Gemini.
-2.  **Servidor Web Local**: Um servidor simples para servir arquivos estáticos. Python já inclui um.
-
-### Configuração
-
-O aplicativo requer que a chave da API Gemini esteja disponível como uma variável de ambiente no ambiente de execução.
-
-- **Variável de Ambiente**: `API_KEY`
-  - A plataforma onde este aplicativo é executado deve injetar `process.env.API_KEY` com sua chave válida.
-
-### Executando Localmente
-
+### Executando o Projeto
 1.  **Clone o repositório:**
     ```bash
     git clone https://github.com/seu-usuario/nexus-quantumi2a2.git
@@ -85,31 +102,26 @@ O aplicativo requer que a chave da API Gemini esteja disponível como uma variá
     ```
 
 2.  **Inicie um servidor web local:**
-    Se você tem Python 3 instalado, o método mais fácil é:
+    Se você tem Python 3, use o servidor embutido:
     ```bash
     python -m http.server 8000
     ```
-    Ou use qualquer outro servidor de sua preferência.
+    Alternativamente, use qualquer outro servidor de arquivos estáticos.
 
 3.  **Acesse a aplicação:**
-    Abra seu navegador e acesse `http://localhost:8000`.
-
-**Nota**: Para que a chamada à API funcione localmente, você precisará de um mecanismo para injetar a variável de ambiente `API_KEY` no seu ambiente de desenvolvimento.
+    Abra seu navegador e navegue para `http://localhost:8000`. Na primeira visita, um modal solicitará que você insira sua chave da API Gemini, que será armazenada com segurança no `localStorage` do seu navegador.
 
 ## Como Contribuir
 
-Contribuições são bem-vindas! Siga os seguintes passos:
+Contribuições são bem-vindas! Siga os passos abaixo:
 
-1.  **Fork o repositório**.
+1.  **Faça um Fork** do repositório.
 2.  **Crie uma nova branch** para sua feature ou correção (`git checkout -b feature/minha-feature`).
-3.  **Implemente suas alterações**. Siga os padrões de código existentes (componentes funcionais, hooks, TypeScript).
-4.  **Faça o commit** das suas alterações (`git commit -m 'feat: Adiciona nova funcionalidade'`).
-5.  **Envie para a sua branch** (`git push origin feature/minha-feature`).
-6.  **Abra um Pull Request** detalhando suas mudanças.
+3.  **Implemente suas alterações**, seguindo os padrões de código existentes.
+4.  **Faça o commit** das suas alterações com uma mensagem clara (`git commit -m 'feat: Adiciona nova funcionalidade'`).
+5.  **Faça o push** para a sua branch (`git push origin feature/minha-feature`).
+6.  **Abra um Pull Request** detalhando as mudanças realizadas.
 
 ## Licença
 
-Este projeto está licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
-
----
-**Versão**: 2.0.0
+Este projeto está licenciado sob a Licença MIT.

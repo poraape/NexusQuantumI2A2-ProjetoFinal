@@ -19,7 +19,10 @@
     "xml-js": "1.6.11",
     "papaparse": "5.4.1",
     "pdfjs-dist": "4.3.136",
-    "tesseract.js": "5.1.0"
+    "tesseract.js": "5.1.0",
+    "jspdf": "2.5.1",
+    "html2canvas": "1.4.1",
+    "docx": "8.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

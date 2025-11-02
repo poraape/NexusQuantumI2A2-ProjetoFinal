@@ -114,7 +114,8 @@ export const TaxSimulator: React.FC<TaxSimulatorProps> = ({ report, onSimulation
           <div className="flex flex-col">
               <label className="text-xs text-content-default mb-1">Regime Tributário</label>
               <select value={params.regimeTributario} onChange={e => setParams(p => ({...p, regimeTributario: e.target.value as TaxRegime}))} className={formInputStyle}>
-                  {taxRegimes.map(r => <option key={r} value={r}>{r}</option>)}
+                  {/* Fix: Explicitly type 'r' to resolve 'unknown' type error. */}
+                  {taxRegimes.map((r: string) => <option key={r} value={r}>{r}</option>)}
               </select>
           </div>
           {/* UF */}

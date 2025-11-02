@@ -1,4 +1,7 @@
-// Fix: Defining all the necessary types for the application.
+// types.ts
+
+export type Theme = 'dark' | 'light';
+
 export enum ProcessingStepStatus {
   PENDING = 'PENDING',
   IN_PROGRESS = 'IN_PROGRESS',
@@ -17,16 +20,12 @@ export interface KeyMetrics {
   valorTotalDasNfes: number;
   valorTotalDosProdutos: number;
   indiceDeConformidadeICMS: string;
-  nivelDeRiscoTributario: 'Baixo' | 'Médio' | 'Alto';
+  nivelDeRiscoTributario: 'Baixo' | 'Média' | 'Alto';
   estimativaDeNVA: number;
   valorTotalDeICMS: number;
   valorTotalDePIS: number;
   valorTotalDeCOFINS: number;
   valorTotalDeISS: number;
-}
-
-export interface ActionableInsight {
-  text: string;
 }
 
 export interface CsvInsight {
@@ -39,19 +38,29 @@ export interface ExecutiveSummary {
   title: string;
   description: string;
   keyMetrics: KeyMetrics;
-  actionableInsights: ActionableInsight[];
+  actionableInsights: { text: string }[];
   csvInsights?: CsvInsight[];
 }
 
 export interface GeneratedReport {
   executiveSummary: ExecutiveSummary;
-  fullTextAnalysis?: string; // Made optional for on-demand loading
+  fullTextAnalysis?: string;
+}
+
+export type ErrorSeverity = 'critical' | 'warning' | 'info';
+
+export interface LogError {
+  timestamp: string;
+  source: string;
+  message: string;
+  severity: ErrorSeverity;
+  details?: any;
 }
 
 export enum TaxRegime {
+  SIMPLES_NACIONAL = 'Simples Nacional',
   LUCRO_PRESUMIDO = 'Lucro Presumido',
   LUCRO_REAL = 'Lucro Real',
-  SIMPLES_NACIONAL = 'Simples Nacional',
 }
 
 export interface SimulationParams {
@@ -63,23 +72,11 @@ export interface SimulationParams {
 }
 
 export interface TaxScenario {
-  nome: string;
-  parametros: {
-    regime: string;
-    uf: string;
-  };
+  nome: TaxRegime;
+  parametros: { regime: TaxRegime, uf: string };
   cargaTributariaTotal: number;
   aliquotaEfetiva: string;
-  impostos: {
-    IRPJ?: number;
-    CSLL?: number;
-    PIS?: number;
-    COFINS?: number;
-    ICMS?: number;
-    ISS?: number;
-    'CPP (INSS)'?: number;
-    IPI?: number;
-  };
+  impostos: { [key: string]: number };
   recomendacoes: string[];
 }
 
@@ -89,47 +86,68 @@ export interface SimulationResult {
   cenarios: TaxScenario[];
 }
 
-export interface ChatMessage {
-    sender: 'user' | 'ai';
-    content: string;
-    chartData?: any;
-    isTyping?: boolean;
-}
-
-export interface KeyComparison {
-  metricName: string;
-  valueFileA: string;
-  valueFileB: string;
-  variance: string;
-  comment: string;
-}
-
-export interface Pattern {
-  description: string;
-  foundIn: string[];
-}
-
-export interface Anomaly {
-  fileName: string;
-  description: string;
-  severity: 'Baixa' | 'Média' | 'Alta';
-}
-
 export interface ComparativeAnalysisReport {
-  executiveSummary: string;
-  keyComparisons: KeyComparison[];
-  identifiedPatterns: Pattern[];
-  anomaliesAndDiscrepancies: Anomaly[];
+    executiveSummary: string;
+    keyComparisons: {
+        metricName: string;
+        valueFileA: string;
+        valueFileB: string;
+        variance: string;
+        comment: string;
+    }[];
+    identifiedPatterns: {
+        description: string;
+        foundIn: string[];
+    }[];
+    anomaliesAndDiscrepancies: {
+        fileName: string;
+        description: string;
+        severity: 'Baixa' | 'Média' | 'Alta';
+    }[];
 }
 
-export type Theme = 'light' | 'dark';
 
-export type ErrorSeverity = 'info' | 'warning' | 'critical';
+export interface ChatMessage {
+  sender: 'user' | 'ai';
+  content: string;
+  chartData?: any;
+}
 
-export interface LogError {
-  timestamp: string;
-  source: string;
-  message: string;
-  severity: ErrorSeverity;
-  details?: any;
+export interface DocumentoFiscalDetalhado {
+  fileName: string;
+  chave: string;
+  itens: {
+    cfop: string;
+    ncm: string;
+    xProd: string;
+    imposto?: any;
+    [key: string]: any;
+  }[];
+  valorImpostos?: number;
+  semaforoFiscal?: 'ok' | 'warning' | 'error';
+  validationIssues?: string[];
+  [key: string]: any;
+}
+
+export type TipoOperacao = 'compra' | 'venda' | 'serviço' | 'desconhecido';
+export type Setor = 'agronegócio' | 'indústria' | 'varejo' | 'transporte' | 'outros';
+
+export interface ClassificationResult {
+    fileName: string;
+    chave: string;
+    tipo_operacao: TipoOperacao;
+    setor: Setor;
+}
+
+export interface MonthlyData {
+    total: number;
+    impostos: number;
+}
+
+export interface ForecastResult {
+    previsaoProximoMes: {
+        faturamento: number;
+        impostos: number;
+    };
+    historicoMensal: { [month: string]: MonthlyData };
 }
