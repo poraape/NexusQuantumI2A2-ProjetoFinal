@@ -2,6 +2,7 @@ import { xml2json } from 'xml-js';
 import Papa from 'papaparse';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
+import nlp from 'compromise';
 
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.3.136/build/pdf.worker.min.mjs`;
@@ -10,6 +11,30 @@ interface ParsedFileResult {
   type: 'text' | 'binary';
   content: string; // For 'text', this will be the processed content
 }
+
+// --- NLP Semantic Extraction ---
+/**
+ * Uses a lightweight NLP library to extract key fiscal entities from text.
+ * @param text The raw text content from a file.
+ * @returns An object containing arrays of found entities.
+ */
+const extractSemanticEntities = (text: string) => {
+    if (!text) return { cnpjs: [], impostos: [], produtos: [] };
+    const doc = nlp(text);
+    // Regex for CNPJ is more reliable than NLP for this specific format.
+    const cnpjs = [...text.matchAll(/\b\d{14}\b/g)].map(m => m[0]);
+    // Match specific tax acronyms.
+    const impostos = doc.match('(ICMS|IPI|PIS|COFINS|ISSQN|CSLL|IRPJ)').out('array');
+    // A simple heuristic for products: find nouns, filter common non-product words.
+    const produtos = doc.nouns().out('array').filter(n => n.length > 3 && !/imposto|total|valor|nota|fiscal/.test(n.toLowerCase())).slice(0, 20);
+
+    return {
+        cnpjs: [...new Set(cnpjs)],
+        impostos: [...new Set(impostos)],
+        produtos: [...new Set(produtos)],
+    };
+};
+
 
 // --- Summarizer Functions ---
 
@@ -353,16 +378,17 @@ export const parseFile = async (file: File, onProgress: (info: string) => void):
 export const extractFullTextFromFile = async (file: File): Promise<string> => {
     const mimeType = file.type || '';
     const fileName = file.name.toLowerCase();
+    let rawText = '';
 
     try {
         if (fileName.endsWith('.xml') || mimeType.includes('xml')) {
             const xmlContent = await file.text();
             const jsonResult = xml2json(xmlContent, { compact: true });
             const jsonObj = JSON.parse(jsonResult);
-            return stringifyForIndexing(jsonObj, xmlContent);
+            rawText = stringifyForIndexing(jsonObj, xmlContent);
         }
-        if (fileName.endsWith('.csv') || mimeType.includes('csv')) {
-             return new Promise((resolve, reject) => {
+        else if (fileName.endsWith('.csv') || mimeType.includes('csv')) {
+             rawText = await new Promise((resolve, reject) => {
                 Papa.parse(file, {
                     header: true,
                     dynamicTyping: true,
@@ -372,8 +398,7 @@ export const extractFullTextFromFile = async (file: File): Promise<string> => {
                 });
             });
         }
-        if (fileName.endsWith('.pdf') || mimeType.includes('pdf')) {
-            // Re-using parsePdfWithOcr but without the summarization step inside
+        else if (fileName.endsWith('.pdf') || mimeType.includes('pdf')) {
             const typedarray = new Uint8Array(await file.arrayBuffer());
             const pdf = await pdfjsLib.getDocument(typedarray).promise;
             let fullText = '';
@@ -383,11 +408,25 @@ export const extractFullTextFromFile = async (file: File): Promise<string> => {
                 fullText += textContent.items.map(item => 'str' in item ? item.str : '').join(' ');
                 fullText += '\n';
             }
-            return fullText;
+            rawText = fullText;
         }
-        if (mimeType.startsWith('text/')) {
-            return file.text();
+        else if (mimeType.startsWith('text/')) {
+            rawText = await file.text();
         }
+
+        if (rawText) {
+            const semanticEntities = extractSemanticEntities(rawText);
+            const semanticBlock = `
+<!--
+### ENTIDADES SEMÂNTICAS EXTRAÍDAS LOCALMENTE ###
+CNPJs Identificados: ${semanticEntities.cnpjs.join(', ') || 'Nenhum'}
+Termos Fiscais: ${semanticEntities.impostos.join(', ') || 'Nenhum'}
+Principais Produtos/Termos: ${semanticEntities.produtos.join(', ') || 'Nenhum'}
+-->
+            `;
+            return `${rawText}\n\n${semanticBlock}`;
+        }
+
     } catch(e) {
         console.error(`[FullTextExtractor] Failed to parse ${file.name}:`, e);
     }

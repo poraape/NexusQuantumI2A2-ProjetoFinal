@@ -1,7 +1,7 @@
 // services/exporter.ts
 import { xml2json } from 'xml-js';
 import { DocumentoFiscalDetalhado } from '../types';
-import { validarDocumento } from './rulesValidator.ts';
+import { validarDocumentoCompleto } from './rulesValidator.ts';
 
 // Helper to simplify JSON from XML
 const simplifyJson = (obj: any): any => {
@@ -20,7 +20,7 @@ const simplifyJson = (obj: any): any => {
     return obj;
 };
 
-const parseNFeXML = (xmlContent: string, fileName: string): DocumentoFiscalDetalhado | null => {
+const parseNFeXML = async (xmlContent: string, fileName: string): Promise<DocumentoFiscalDetalhado | null> => {
     try {
         const jsonResult = xml2json(xmlContent, { compact: true, spaces: 0 });
         const nfeProc = JSON.parse(jsonResult).NFe || JSON.parse(jsonResult).nfeProc || JSON.parse(jsonResult).nFeProc;
@@ -65,16 +65,8 @@ const parseNFeXML = (xmlContent: string, fileName: string): DocumentoFiscalDetal
             valorImpostos: valorImpostosTotal,
         };
         
-        // --- Integration of the Validator ---
-        const validationResult = validarDocumento(doc);
-        doc.semaforoFiscal = validationResult.status;
-        doc.validationIssues = validationResult.issues;
-
-        if(validationResult.status !== 'ok') {
-            console.warn(`[Validator] Document ${fileName} has issues (${validationResult.status}):`, validationResult.issues);
-        }
-
-        return doc;
+        // --- Integration of the complete Validator (now async) ---
+        return await validarDocumentoCompleto(doc);
 
     } catch (e) {
         console.error(`Error parsing XML ${fileName}:`, e);
@@ -86,19 +78,25 @@ export const extrairDadosParaExportacao = async (files: File[]): Promise<{ docum
     const documentos: DocumentoFiscalDetalhado[] = [];
     const log: string[] = [];
 
-    for (const file of files) {
+    const filePromises = files.map(async file => {
         if (file.name.toLowerCase().endsWith('.xml')) {
             const content = await file.text();
-            const doc = parseNFeXML(content, file.name);
+            const doc = await parseNFeXML(content, file.name);
             if (doc) {
-                documentos.push(doc);
+                return { doc, logMsg: null };
             } else {
-                log.push(`AVISO: Falha ao processar o arquivo XML '${file.name}'. Estrutura não reconhecida.`);
+                return { doc: null, logMsg: `AVISO: Falha ao processar o arquivo XML '${file.name}'. Estrutura não reconhecida.` };
             }
         } else {
-            log.push(`AVISO: Arquivo '${file.name}' não é um XML e foi ignorado para exportação.`);
+            return { doc: null, logMsg: `AVISO: Arquivo '${file.name}' não é um XML e foi ignorado para exportação.` };
         }
-    }
+    });
+
+    const results = await Promise.all(filePromises);
+    results.forEach(res => {
+        if (res.doc) documentos.push(res.doc);
+        if (res.logMsg) log.push(res.logMsg);
+    });
 
     return { documentos, log };
 };

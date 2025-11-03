@@ -22,7 +22,8 @@
     "tesseract.js": "5.1.0",
     "jspdf": "2.5.1",
     "html2canvas": "1.4.1",
-    "docx": "8.5.0"
+    "docx": "8.5.0",
+    "compromise": "14.13.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

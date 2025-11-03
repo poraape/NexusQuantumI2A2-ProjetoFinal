@@ -7,9 +7,10 @@ import {
     getFullContentForIndexing,
     estimateTokens,
     // Fix: Import 'getChatCompletion' from geminiService to resolve 'Cannot find name' error.
-    getChatCompletion
+    getChatCompletion,
+    enqueueGeminiCall
 } from './geminiService.ts';
-import { getAnswer, storeAnswer, searchIndex, getForecast, getChartConfig, storeChartConfig } from './contextMemory.ts';
+import { getAnswer, storeAnswer, searchIndex, getForecast, getChartConfig, storeChartConfig, getFeedbackContext } from './contextMemory.ts';
 
 const TOKEN_LIMIT = 7500;
 
@@ -38,6 +39,10 @@ const buildHybridPrompt = (
         finalContext = `${forecastContext}\n\n${finalContext}`;
     }
 
+    // Adiciona o contexto de feedback do usuário
+    const feedbackContext = getFeedbackContext();
+
+
     const basePrompt = `
         Você é a Nexus AI, uma IA especialista em análise fiscal. Sua tarefa é responder à pergunta do usuário de forma precisa, profissional e detalhada.
         
@@ -46,6 +51,7 @@ const buildHybridPrompt = (
         2.  **SEJA ESPECIALISTA:** Demonstre conhecimento fiscal ao interpretar os dados, mencionando totais, remetentes, produtos, impostos, CFOPs ou outros dados relevantes.
         3.  **PROIBIDO RESPOSTAS GENÉRICAS:** Nunca diga "não tenho contexto" ou "não sei". Se o contexto parecer insuficiente, afirme que a informação específica não foi encontrada nos documentos analisados, mas ofereça uma análise do que está disponível.
         4.  **FONTE DO CONTEXTO:** A fonte para esta análise é: ${contextSource}.
+        5.  **FEEDBACK DO USUÁRIO:** ${feedbackContext}. Leve este feedback em consideração para ajustar o tom e a profundidade de sua resposta.
         
         --- INÍCIO DO CONTEXTO ---
         ${finalContext}
@@ -221,7 +227,7 @@ export const generateChartConfigFromData = async (
     `;
     
     try {
-        const response = await callGeminiWithRetry([instruction], logError, true);
+        const response = await enqueueGeminiCall(() => callGeminiWithRetry([instruction], logError, true));
         
         if (response.text.trim().toLowerCase() === 'null') {
             logError({ source: 'ChatService.Chart', message: 'IA determinou que um gráfico não é aplicável.', severity: 'info' });

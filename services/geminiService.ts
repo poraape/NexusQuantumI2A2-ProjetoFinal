@@ -14,12 +14,66 @@ import {
 import { parseFile, extractFullTextFromFile } from './fileParsers.ts';
 import { GEMINI_API_KEY } from '../config.ts';
 
-const CHUNK_TOKEN_THRESHOLD = 8000; // ≈ 32,000 characters
+// --- Global API Queue System ---
+// This queue ensures that API calls are made sequentially to avoid rate limiting (429) and server overload errors (500).
+
+interface QueuedTask<T> {
+  task: () => Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: any) => void;
+}
+
+const queue: QueuedTask<any>[] = [];
+let isProcessingQueue = false;
+
+/**
+ * Processes the queue one task at a time.
+ * Includes adaptive delays after success or failure.
+ */
+async function processQueue() {
+  if (isProcessingQueue || queue.length === 0) return;
+  isProcessingQueue = true;
+
+  const { task, resolve, reject } = queue.shift()!;
+
+  try {
+    const result = await task();
+    resolve(result);
+    // Wait for 1 second after a successful request to stay within typical rate limits.
+    await new Promise(r => setTimeout(r, 1000));
+  } catch (error) {
+    console.error('[QueueProcessor] Task failed, rejecting promise.', error);
+    reject(error);
+    // Wait longer after a failure to allow the API to recover.
+    await new Promise(r => setTimeout(r, 3000));
+  } finally {
+    isProcessingQueue = false;
+    // Immediately attempt to process the next item.
+    processQueue();
+  }
+}
+
+/**
+ * Adds a Gemini API call to the global queue.
+ * @param task A function that returns the promise from the API call (e.g., `() => callGeminiWithRetry(...)`).
+ * @returns A promise that resolves or rejects when the task is completed.
+ */
+export function enqueueGeminiCall<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    queue.push({ task, resolve, reject });
+    if (!isProcessingQueue) {
+      processQueue();
+    }
+  });
+}
+
+
+const CHUNK_TOKEN_THRESHOLD = 7000; // ≈ 28,000 characters
 
 // --- API Call Strategy with Fallback ---
 
 const GEMINI_PROXY_URL = "https://nexus-quantumi2a2-747991255581.us-west1.run.app/api-proxy/v1beta/models";
-const GEMINI_DIRECT_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_DIRECT_URL = "https://generativelangue.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-2.5-flash";
 
 interface GeminiApiResponse {
@@ -302,7 +356,7 @@ const generateSummaryForSingleFile = async (
     `;
 
     try {
-        const response = await callGeminiWithRetry([prompt], logError, true);
+        const response = await enqueueGeminiCall(() => callGeminiWithRetry([prompt], logError, true));
         return parseGeminiJsonResponse<any>(response.text, logError);
     } catch (e) {
         logError({
@@ -392,7 +446,7 @@ export const generateReportFromFiles = async (
         `;
 
         try {
-            const response = await callGeminiWithRetry([synthesisPrompt], logError, true);
+            const response = await enqueueGeminiCall(() => callGeminiWithRetry([synthesisPrompt], logError, true));
             const textualPart = parseGeminiJsonResponse<any>(response.text, logError);
             
             // Combine aggregated numbers with AI-generated text
@@ -457,7 +511,7 @@ export const generateReportFromFiles = async (
     const promptParts = [{text: prompt}, {text: `\n\nCONTEÚDO DOS ARQUIVOS:\n${combinedContent}`}];
 
     try {
-        const response = await callGeminiWithRetry(promptParts, logError, true);
+        const response = await enqueueGeminiCall(() => callGeminiWithRetry(promptParts, logError, true));
         const report = parseGeminiJsonResponse<{ executiveSummary: ExecutiveSummary }>(response.text, logError);
         
         if (!report || !report.executiveSummary || !report.executiveSummary.keyMetrics) {
@@ -506,7 +560,7 @@ export const generateFullTextAnalysis = async (
                 onProgress(`Analisando arquivo ${i + 1}/${fileContents.length}: ${file.fileName}`);
                 const chunkPrompt = `Você é um analista fiscal. Forneça uma análise textual detalhada, em markdown, do seguinte documento fiscal:\n\n${file.content}`;
                 try {
-                    const response = await callGeminiWithRetry([chunkPrompt], logError, false);
+                    const response = await enqueueGeminiCall(() => callGeminiWithRetry([chunkPrompt], logError, false));
                     individualAnalyses.push(`## Análise do Arquivo: ${file.fileName}\n\n${response.text}`);
                 } catch (chunkError) {
                     logError({ source: 'geminiService.fullText', message: `Falha ao analisar o arquivo ${file.fileName}.`, severity: 'warning', details: chunkError });
@@ -529,7 +583,7 @@ export const generateFullTextAnalysis = async (
                 CONTEÚDO DOS ARQUIVOS:
                 ${combinedContent}
             `;
-            const response = await callGeminiWithRetry([prompt], logError, false);
+            const response = await enqueueGeminiCall(() => callGeminiWithRetry([prompt], logError, false));
             const endTime = performance.now();
             logError({ source: 'geminiService.fullText', message: `Análise completa (unificada) concluída em ${(endTime - startTime).toFixed(2)} ms.`, severity: 'info' });
             return response.text;
@@ -576,7 +630,7 @@ export const simulateTaxScenario = async (
     const promptParts = [{ text: prompt }];
     
     try {
-        const response = await callGeminiWithRetry(promptParts, logError, true);
+        const response = await enqueueGeminiCall(() => callGeminiWithRetry(promptParts, logError, true));
         const textualAnalysis = parseGeminiJsonResponse<{
             resumoExecutivo: string;
             recomendacaoPrincipal: string;
@@ -641,7 +695,7 @@ export const generateComparativeAnalysis = async (
                  onProgress(`Resumindo arquivo ${i + 1}/${fileContents.length}: ${file.fileName}`);
                  const chunkPrompt = `Você é um analista fiscal. Extraia as métricas e características chave do seguinte documento em formato JSON. Inclua totais, impostos, e datas. Seja conciso.\n\n${file.content}`;
                  try {
-                    const response = await callGeminiWithRetry([chunkPrompt], logError, false);
+                    const response = await enqueueGeminiCall(() => callGeminiWithRetry([chunkPrompt], logError, false));
                     individualSummaries.push(`--- RESUMO DO ARQUIVO: ${file.fileName} ---\n${response.text}`);
                  } catch (chunkError) {
                     logError({ source: 'geminiService.compare', message: `Falha ao resumir o arquivo ${file.fileName} para comparação.`, severity: 'warning', details: chunkError });
@@ -662,7 +716,7 @@ export const generateComparativeAnalysis = async (
                 RESUMOS DOS ARQUIVOS:
                 ${individualSummaries.join('\n\n')}
             `;
-             const finalResponse = await callGeminiWithRetry([synthesisPrompt], logError, true);
+             const finalResponse = await enqueueGeminiCall(() => callGeminiWithRetry([synthesisPrompt], logError, true));
              analysisResult = parseGeminiJsonResponse<ComparativeAnalysisReport>(finalResponse.text, logError);
 
         } else {
@@ -681,7 +735,7 @@ export const generateComparativeAnalysis = async (
                 CONTEÚDO DOS ARQUIVOS:
                 ${combinedContent}
             `;
-            const response = await callGeminiWithRetry([prompt], logError, true);
+            const response = await enqueueGeminiCall(() => callGeminiWithRetry([prompt], logError, true));
             analysisResult = parseGeminiJsonResponse<ComparativeAnalysisReport>(response.text, logError);
         }
 
@@ -749,7 +803,7 @@ export const getChatCompletion = async (
     logError: (error: Omit<LogError, 'timestamp'>) => void
 ): Promise<string> => {
     try {
-        const response = await callGeminiWithRetry([prompt], logError, false);
+        const response = await enqueueGeminiCall(() => callGeminiWithRetry([prompt], logError, false));
         return response.text;
     } catch(err) {
         logError({

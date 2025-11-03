@@ -6,12 +6,26 @@ import { useErrorLog } from '../../hooks/useErrorLog.ts';
 import { PaperclipIcon } from '../icons/PaperclipIcon.tsx';
 import { XCircleIcon } from '../icons/XCircleIcon.tsx';
 import { getChatResponse, generateChartConfigFromData } from '../../services/chatService.ts';
+import { storeFeedback } from '../../services/contextMemory.ts';
 
 const SendIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.126A59.768 59.768 0 0 1 21.485 12 59.77 59.77 0 0 1 3.27 20.876L5.999 12Zm0 0h7.5" />
     </svg>
 );
+
+const ThumbsUpIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.5c.806 0 1.533-.424 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75A2.25 2.25 0 0 1 16.5 4.5c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M6.633 10.5l-1.832 8.692a.75.75 0 0 0 .75.868h4.028a.75.75 0 0 0 .75-.868l-1.832-8.692M6.633 10.5H3.75" />
+    </svg>
+);
+
+const ThumbsDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.5c.806 0 1.533.424 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75A2.25 2.25 0 0 1 16.5 4.5c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M6.633 10.5l-1.832 8.692a.75.75 0 0 0 .75.868h4.028a.75.75 0 0 0 .75-.868l-1.832-8.692m0-2.25H3.75" />
+    </svg>
+);
+
 
 export const InteractiveChat: React.FC<{
   report: GeneratedReport;
@@ -22,6 +36,7 @@ export const InteractiveChat: React.FC<{
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [feedbackGiven, setFeedbackGiven] = useState<{[key: number]: boolean}>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { logError } = useErrorLog();
@@ -53,6 +68,12 @@ export const InteractiveChat: React.FC<{
 
   const handleRemoveFile = (fileName: string) => {
     setAttachedFiles(prev => prev.filter(f => f.name !== fileName));
+  };
+  
+  const handleFeedback = (index: number, type: 'positive' | 'negative') => {
+    storeFeedback(type, messages[index].content);
+    setFeedbackGiven(prev => ({...prev, [index]: true}));
+    logError({source: 'ChatFeedback', message: `Feedback ${type} recebido para a mensagem.`, severity: 'info'});
   };
 
   const handleSend = async () => {
@@ -124,11 +145,25 @@ export const InteractiveChat: React.FC<{
       
       <div id="chat-messages-container" className="flex-1 overflow-y-auto pr-2 space-y-4">
         {messages.map((msg, index) => (
-          <div key={index} className={`chat-message ${msg.sender} flex items-start gap-3 ${msg.sender === 'user' ? 'justify-end' : ''}`}>
+          <div key={index} className={`flex items-start gap-3 w-full ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
              {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-teal-400 flex-shrink-0"></div>}
-             <div className={`max-w-md p-3 rounded-2xl ${msg.sender === 'ai' ? 'bg-bg-secondary-opaque/80' : 'bg-blue-600'}`}>
-                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${msg.sender === 'ai' ? 'text-content-emphasis' : 'text-white'}`}>{msg.content}</p>
-                {msg.chartData && <ChatChart data={msg.chartData} />}
+             <div className="flex flex-col max-w-md">
+                 <div className={`p-3 rounded-2xl ${msg.sender === 'ai' ? 'bg-bg-secondary-opaque/80' : 'bg-blue-600'}`}>
+                    <p className={`text-sm whitespace-pre-wrap leading-relaxed ${msg.sender === 'ai' ? 'text-content-emphasis' : 'text-white'}`}>{msg.content}</p>
+                    {msg.chartData && <ChatChart data={msg.chartData} />}
+                 </div>
+                 {msg.sender === 'ai' && !isTyping && (
+                     <div className="mt-1.5 flex items-center gap-2">
+                        {feedbackGiven[index] ? (
+                             <span className="text-xs text-content-default/50">Obrigado pelo feedback!</span>
+                        ) : (
+                            <>
+                                <button onClick={() => handleFeedback(index, 'positive')} className="p-1 rounded-full text-content-default/50 hover:bg-green-500/20 hover:text-green-400 transition-colors"><ThumbsUpIcon className="w-3.5 h-3.5"/></button>
+                                <button onClick={() => handleFeedback(index, 'negative')} className="p-1 rounded-full text-content-default/50 hover:bg-red-500/20 hover:text-red-400 transition-colors"><ThumbsDownIcon className="w-3.5 h-3.5"/></button>
+                            </>
+                        )}
+                     </div>
+                 )}
              </div>
              {msg.sender === 'user' && <UserAvatarIcon className="w-8 h-8 flex-shrink-0" />}
           </div>

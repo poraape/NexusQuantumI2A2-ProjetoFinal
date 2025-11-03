@@ -1,6 +1,6 @@
 import { DocumentoFiscalDetalhado, ClassificationResult, TipoOperacao, Setor, LogError } from '../types.ts';
-import { callGeminiWithRetry, parseGeminiJsonResponse } from './geminiService.ts';
-import { storeClassifications } from './contextMemory.ts';
+import { callGeminiWithRetry, parseGeminiJsonResponse, enqueueGeminiCall } from './geminiService.ts';
+import { storeClassifications, getCustomSectors } from './contextMemory.ts';
 
 const fallbackClassify = (doc: DocumentoFiscalDetalhado): { tipo_operacao: TipoOperacao; setor: Setor } => {
     let tipo_operacao: TipoOperacao = 'desconhecido';
@@ -40,6 +40,10 @@ export async function classificarNotas(
 
     const BATCH_SIZE = 50; // Processa 50 documentos por chamada de API
     const allResults: ClassificationResult[] = [];
+    const customSectors = getCustomSectors();
+    const availableSectors = customSectors && customSectors.length > 0
+        ? [...customSectors, 'outros']
+        : ['agronegócio', 'indústria', 'varejo', 'transporte', 'outros'];
 
     try {
         logError({ source: 'Classifier', message: `Iniciando classificação com IA para ${documentos.length} documentos...`, severity: 'info' });
@@ -62,7 +66,7 @@ export async function classificarNotas(
                 Para cada nota, determine o 'tipo_operacao' e o 'setor'.
 
                 - tipo_operacao: 'compra', 'venda', ou 'serviço'.
-                - setor: 'agronegócio', 'indústria', 'varejo', 'transporte', ou 'outros'.
+                - setor: Escolha um dos seguintes -> [${availableSectors.map(s => `'${s}'`).join(', ')}].
 
                 Responda APENAS com um array JSON, onde cada objeto contém "fileName", "tipo_operacao", e "setor".
                 Exemplo de resposta:
@@ -75,7 +79,7 @@ export async function classificarNotas(
                 ${JSON.stringify(resumosParaIA, null, 2)}
             `;
 
-            const response = await callGeminiWithRetry([prompt], logError, true);
+            const response = await enqueueGeminiCall(() => callGeminiWithRetry([prompt], logError, true));
             const resultadosLote = parseGeminiJsonResponse<any[]>(response.text, logError);
             
             if (!Array.isArray(resultadosLote) || resultadosLote.length !== batchDocs.length) {

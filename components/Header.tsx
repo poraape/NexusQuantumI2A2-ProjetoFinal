@@ -9,6 +9,7 @@ import { Theme } from '../types.ts';
 import { useErrorLog } from '../hooks/useErrorLog.ts';
 import { extrairDadosParaExportacao, gerarSpedFiscalMVP, gerarEfdContribMVP, gerarCsvERP, downloadFile } from '../services/exporter.ts';
 import { exportarConteudoCompleto } from '../services/exportService.ts';
+import { suggestAccountingEntries, exportToCSV } from '../services/accountingAutomation.ts';
 
 interface HeaderProps {
   onLogoClick: () => void;
@@ -60,7 +61,7 @@ const FiscalExportDropdown: React.FC<{
 }> = ({ files, logError }) => {
     const [isExporting, setIsExporting] = useState(false);
     
-    const handleExport = async (format: 'sped' | 'efd' | 'csv') => {
+    const handleExport = async (format: 'sped' | 'efd' | 'csv' | 'lancamentos') => {
         if (isExporting) return;
         setIsExporting(true);
         try {
@@ -82,6 +83,11 @@ const FiscalExportDropdown: React.FC<{
                 case 'csv':
                     fileContent = gerarCsvERP(documentos);
                     fileName = 'ERP_IMPORT.csv';
+                    break;
+                case 'lancamentos':
+                    const entries = suggestAccountingEntries(documentos);
+                    fileContent = exportToCSV(entries);
+                    fileName = 'LANCAMENTOS_CONTABEIS.csv';
                     break;
             }
 
@@ -112,6 +118,8 @@ const FiscalExportDropdown: React.FC<{
                  </div>
             ) : (
                 <>
+                    <button onClick={() => handleExport('lancamentos')} className="w-full text-left px-3 py-1.5 text-sm rounded-md text-content-default hover:bg-white/10">Exportar Lançamentos (CSV)</button>
+                    <div className="h-px bg-border-glass my-1"></div>
                     <button onClick={() => handleExport('sped')} className="w-full text-left px-3 py-1.5 text-sm rounded-md text-content-default hover:bg-white/10">Exportar SPED Fiscal (MVP)</button>
                     <button onClick={() => handleExport('efd')} className="w-full text-left px-3 py-1.5 text-sm rounded-md text-content-default hover:bg-white/10">Exportar EFD Contrib. (MVP)</button>
                     <button onClick={() => handleExport('csv')} className="w-full text-left px-3 py-1.5 text-sm rounded-md text-content-default hover:bg-white/10">Exportar CSV para ERP</button>

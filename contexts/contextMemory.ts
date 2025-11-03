@@ -1,4 +1,3 @@
-// Fix: Consolidating and exporting all context management functions to resolve multiple import errors.
 import { ExecutiveSummary, SimulationResult, SimulationParams, ClassificationResult, ForecastResult } from '../types.ts';
 
 const CONTEXT_PREFIX = 'NEXUS_CTX_';

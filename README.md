@@ -65,6 +65,19 @@ A aplicação utiliza o `localStorage` do navegador para implementar um sistema 
 
 ---
 
+## 🧩 Novas Capacidades (Pós-Auditoria)
+
+### Automação Contábil
+O sistema agora gera sugestões de lançamentos contábeis automáticos com base no CFOP e tipo de operação dos documentos fiscais. Esses lançamentos podem ser exportados em formato CSV, preparando o sistema para futuras integrações diretas com ERPs de mercado.
+
+### Feedback Adaptativo
+O chat e os relatórios integram um sistema de feedback do usuário (👍/👎). As avaliações são armazenadas localmente e utilizadas para enriquecer o contexto dos prompts futuros, permitindo que a IA aprimore a precisão e a relevância de suas análises ao longo do tempo.
+
+### NLP Fiscal Local
+Foi implementada uma camada semântica de pré-processamento que utiliza NLP (Natural Language Processing) leve, executada localmente no navegador. Isso aprimora o reconhecimento de entidades fiscais chave (CNPJs, termos de impostos) antes do envio dos dados para a IA, otimizando o consumo de tokens e melhorando a qualidade do contexto para o sistema de RAG.
+
+---
+
 ## Estrutura do Projeto
 
 ```
