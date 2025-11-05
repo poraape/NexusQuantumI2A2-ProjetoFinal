@@ -26,18 +26,27 @@ echo -e "${GREEN}🚀 Iniciando ambiente de desenvolvimento do Nexus QuantumI2A2
 # Garante que o script pare se algum comando falhar
 set -e
 
-# --- Verificação de Portas ---
-check_port() {
+# --- Liberação de Portas ---
+free_port() {
+    echo -e "${BLUE}   - Verificando e liberando a porta $1...${NC}"
     if lsof -i :$1 -sTCP:LISTEN -t >/dev/null ; then
-        echo -e "${RED}Erro: A porta $1 já está em uso. Por favor, libere a porta e tente novamente.${NC}"
-        exit 1
+        echo -e "${YELLOW}     - Porta $1 está em uso. Tentando liberar...${NC}"
+        lsof -t -i :$1 | xargs kill -9
+        sleep 1 # Dá um tempo para a porta ser liberada
+        if lsof -i :$1 -sTCP:LISTEN -t >/dev/null ; then
+            echo -e "${RED}     - Não foi possível liberar a porta $1. Saindo.${NC}"
+            exit 1
+        else
+            echo -e "${GREEN}     - Porta $1 liberada com sucesso.${NC}"
+        fi
+    else
+        echo -e "${GREEN}     - Porta $1 já está livre.${NC}"
     fi
 }
 
-echo -e "\n${YELLOW}🔎 Verificando portas necessárias...${NC}"
-check_port 3001 # Porta do Backend
-check_port 8000 # Porta do Frontend
-echo -e "${GREEN}   - Portas 3001 e 8000 estão livres.${NC}"
+echo -e "\n${YELLOW}🔎 Verificando e liberando portas necessárias...${NC}"
+free_port 3001 # Porta do Backend
+free_port 8000 # Porta do Frontend
 
 
 # --- 1. Preparar e Iniciar o Backend ---
@@ -49,6 +58,22 @@ npm install # Instala dependências da raiz, incluindo as do workspace do backen
 cd backend
 echo -e "${BLUE}   - Iniciando serviços de infraestrutura (Redis & Weaviate) com Docker...${NC}"
 "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d
+
+echo -e "${BLUE}   - Aguardando o Weaviate ficar pronto...${NC}"
+# Loop para verificar a saúde do Weaviate antes de continuar
+RETRY_COUNT_WEAVIATE=0
+MAX_RETRIES_WEAVIATE=15
+until $(curl --output /dev/null --silent --fail http://localhost:8080/v1/.well-known/ready); do
+    if [ ${RETRY_COUNT_WEAVIATE} -ge ${MAX_RETRIES_WEAVIATE} ]; then
+        echo -e "${RED}Erro: O Weaviate não iniciou após ${MAX_RETRIES_WEAVIATE} tentativas.${NC}"
+        cleanup
+        exit 1
+    fi
+    printf '.'
+    RETRY_COUNT_WEAVIATE=$((RETRY_COUNT_WEAVIATE+1))
+    sleep 2
+done
+echo -e "\n${GREEN}   - Weaviate está pronto!${NC}"
 
 echo -e "${BLUE}   - Iniciando o servidor Backend (Node.js) em background...${NC}"
 # Inicia o servidor em background e redireciona a saída para um log
@@ -100,12 +125,11 @@ echo -e "   - Backend rodando em: ${BLUE}http://localhost:3001${NC}"
 echo -e "   - Log do backend em: ${BLUE}backend.log${NC}"
 
 # --- 2. Iniciar o Frontend ---
-echo -e "\n${YELLOW}▶️  Iniciando o servidor do Frontend (usando 'serve')...${NC}"
+echo -e "\n${YELLOW}▶️  Iniciando o servidor do Frontend (Vite Dev Server)...${NC}"
 echo -e "\n${GREEN}🎉 Ambiente pronto! Acesse a aplicação em: http://localhost:8000${NC}"
 echo -e "(Pressione ${YELLOW}Ctrl+C${NC} para finalizar todos os processos)"
 
-# Usa 'npx serve' que lida melhor com MIME types para .tsx
-npx serve -l 8000 . > /dev/null 2>&1 &
+npm run dev -- --host 0.0.0.0 --port 8000 >/dev/null 2>&1 &
 FRONTEND_PID=$!
 
 wait # Espera por Ctrl+C para chamar a função cleanup
