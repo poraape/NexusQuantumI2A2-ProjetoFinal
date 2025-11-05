@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexusquantum.dev/schemas/msg/1.0.0/agent.output.json",
+  "title": "Agent Output",
+  "type": "object",
+  "required": ["schemaVersion", "headers", "result"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "agentVersion": {"type": "string", "description": "Versão semântica do agente emissor"},
+    "headers": {
+      "type": "object",
+      "required": ["traceId", "agentId", "timestamp", "taskId"],
+      "properties": {
+        "traceId": {"type": "string"},
+        "agentId": {"type": "string"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "taskId": {"type": "string"},
+        "planId": {"type": "string"},
+        "status": {"type": "string", "enum": ["success", "failure", "partial"]}
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["contentType", "payload"],
+      "properties": {
+        "contentType": {
+          "type": "string",
+          "enum": [
+            "application/json",
+            "text/markdown",
+            "application/vnd.nexus.forecast+json",
+            "application/vnd.nexus.export+json"
+          ]
+        },
+        "payload": {"type": "object", "additionalProperties": true},
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["statement", "confidence"],
+            "properties": {
+              "statement": {"type": "string"},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+              "sources": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["uri", "hash"],
+            "properties": {
+              "uri": {"type": "string", "format": "uri"},
+              "hash": {"type": "string"},
+              "expiresAt": {"type": "string", "format": "date-time"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "retryable": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,36 @@
+{
+  "version": "2024-05-20",
+  "flags": {
+    "useMockAgents": {
+      "enabled": true,
+      "description": "Ativa agentes mockados para ETL, validação e cognitivo",
+      "metadata": {
+        "targets": ["etl.agent", "validator.agent", "cognitive.agent"],
+        "owner": "platform-team"
+      }
+    },
+    "usePlannerV1": {
+      "enabled": false,
+      "description": "Envia intents através do planner backend",
+      "metadata": {
+        "rollout": "staging",
+        "dependsOn": ["useMockAgents"]
+      }
+    },
+    "enableSharedMemory": {
+      "enabled": false,
+      "description": "Redireciona a memória curta para o serviço Redis/Qdrant",
+      "metadata": {
+        "requires": "planner",
+        "fallback": "localStorage"
+      }
+    },
+    "enableObservability": {
+      "enabled": true,
+      "description": "Publica telemetria sintética no event bus",
+      "metadata": {
+        "sampleRate": 0.5
+      }
+    }
+  }
+}

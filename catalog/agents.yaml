@@ -1,0 +1,31 @@
+agents:
+  - id: interface-agent
+    version: 1.1.0
+    owner: ux-platform
+    description: Tradução de eventos UI para intents multiagente
+    capabilities:
+      - intent-detection
+      - session-sync
+    slas:
+      latencyP95Ms: 150
+      errorRate: 0.002
+  - id: planner-agent
+    version: 1.0.0
+    owner: orchestration
+    description: Planejamento de DAG e roteamento de tarefas
+    capabilities:
+      - dag-construction
+      - policy-enforcement
+    slas:
+      latencyP95Ms: 400
+      errorRate: 0.005
+  - id: etl-agent
+    version: 0.9.0-beta
+    owner: data-platform
+    description: Parsing/OCR e normalização
+    capabilities:
+      - ocr
+      - xml-normalization
+    slas:
+      latencyP95Ms: 2500
+      errorRate: 0.01

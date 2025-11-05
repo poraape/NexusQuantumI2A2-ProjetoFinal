@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexusquantum.dev/schemas/msg/1.0.0/telemetry.event.json",
+  "title": "Telemetry Event",
+  "type": "object",
+  "required": ["schemaVersion", "headers", "metrics"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "headers": {
+      "type": "object",
+      "required": ["traceId", "agentId", "timestamp"],
+      "properties": {
+        "traceId": {"type": "string"},
+        "agentId": {"type": "string"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "planId": {"type": "string"},
+        "taskId": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["latencyMs", "status"],
+      "properties": {
+        "latencyMs": {"type": "number", "minimum": 0},
+        "status": {"type": "string", "enum": ["success", "failure", "retry"]},
+        "cpuMs": {"type": "number", "minimum": 0},
+        "memoryMb": {"type": "number", "minimum": 0},
+        "modelTokens": {"type": "integer", "minimum": 0},
+        "costUsd": {"type": "number", "minimum": 0},
+        "errorCode": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

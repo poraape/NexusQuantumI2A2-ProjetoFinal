@@ -1,0 +1,121 @@
+openapi: 3.1.0
+info:
+  title: NexusQuantumI2A2 BFF API
+  version: 1.0.0
+  description: >-
+    Camada intermediária planejada para encapsular integrações de IA, parsing fiscal e exportação,
+    preservando a experiência da SPA atual.
+servers:
+  - url: https://bff.nexusquantum.local/api/v1
+    description: Ambiente interno protegido por gateway zero-trust.
+paths:
+  /uploads:
+    post:
+      summary: Registra um lote de arquivos enviados pelo usuário final.
+      operationId: createUploadBatch
+      tags: [ingestao]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/upload-batch.request.json'
+      responses:
+        '202':
+          description: Lote aceito e enviado para o barramento.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/upload-batch.response.json'
+        '400':
+          description: Payload inválido.
+        '429':
+          description: Limite de taxa excedido.
+  /reports/{sessionId}:
+    get:
+      summary: Recupera relatórios analíticos gerados pelos agentes.
+      operationId: getReports
+      tags: [analise]
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: includeRaw
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Relatórios disponíveis para renderização na UI.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/report.response.json'
+        '404':
+          description: Sessão não encontrada.
+  /chat/{sessionId}:
+    post:
+      summary: Envia uma pergunta contextual para o agente cognitivo.
+      operationId: postChatMessage
+      tags: [chat]
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/chat.request.json'
+      responses:
+        '200':
+          description: Resposta gerada com referências de auditoria.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/chat.response.json'
+        '504':
+          description: Tempo excedido aguardando agentes cognitivos.
+  /exports/{sessionId}:
+    post:
+      summary: Dispara geração de arquivos fiscais.
+      operationId: createExport
+      tags: [exportacao]
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/export.request.json'
+      responses:
+        '200':
+          description: Exportação gerada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/export.response.json'
+        '409':
+          description: Lote ainda não validado pelos agentes de compliance.
+components:
+  securitySchemes:
+    AgentToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Token inválido ou expirado.
+security:
+  - AgentToken: []

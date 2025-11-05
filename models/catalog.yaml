@@ -1,0 +1,31 @@
+models:
+  - id: cognitive-analyst-v1
+    provider: gemini-pro
+    deployment: serverless
+    owner: ai-platform
+    slo:
+      latencyP95Ms: 3500
+      errorRate: 0.02
+    datasets:
+      - fiscal-reports-pt-br
+    acceptance:
+      - exec-summary-accuracy >= 0.9
+      - hallucination-rate <= 0.05
+    rollback:
+      command: scripts/models/rollback.sh cognitive-analyst-v1
+      rtoMinutes: 5
+  - id: etl-parser-v2
+    provider: local-llama
+    deployment: kubernetes
+    owner: data-platform
+    slo:
+      latencyP95Ms: 2500
+      errorRate: 0.01
+    datasets:
+      - xml-nfe-sample
+    acceptance:
+      - parse-success-rate >= 0.98
+      - schema-drift-alerts = 0
+    rollback:
+      command: scripts/models/rollback.sh etl-parser-v2
+      rtoMinutes: 3

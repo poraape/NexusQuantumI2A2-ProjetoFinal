@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExportRequest",
+  "type": "object",
+  "required": ["format", "documents"],
+  "properties": {
+    "format": {
+      "type": "string",
+      "enum": ["csv", "sped", "efd", "json"]
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["documentId", "status"],
+        "properties": {
+          "documentId": { "type": "string" },
+          "status": { "type": "string", "enum": ["validated", "pending"] }
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "compress": { "type": "boolean", "default": false },
+        "includeEvidence": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

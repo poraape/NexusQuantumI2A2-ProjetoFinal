@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UploadBatchRequest",
+  "type": "object",
+  "required": ["sessionId", "files"],
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "description": "Identificador estável da sessão da UI gerado pelo agente de interface."
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fileName", "mimeType", "size", "checksum"],
+        "properties": {
+          "fileName": { "type": "string" },
+          "mimeType": { "type": "string" },
+          "size": { "type": "integer", "minimum": 1 },
+          "checksum": { "type": "string", "description": "SHA-256 base64" }
+        }
+      },
+      "minItems": 1,
+      "maxItems": 50
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "uiVersion": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

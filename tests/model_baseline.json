@@ -1,0 +1,6 @@
+{
+  "metrics": {
+    "execSummaryAccuracy": 0.92,
+    "hallucinationRate": 0.04
+  }
+}

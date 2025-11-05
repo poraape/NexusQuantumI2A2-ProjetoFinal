@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Dependências principais do front-end atual</title>
+  <desc id="desc">Diagrama simplificado mostrando App.tsx e os serviços diretamente acoplados.</desc>
+  <rect width="1200" height="720" fill="#0b1221"/>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" fill="#f8fbff">
+    <rect x="490" y="60" width="220" height="70" rx="12" fill="#1f6feb" stroke="#89c2ff" stroke-width="2"/>
+    <text x="600" y="103" text-anchor="middle" font-size="20" font-weight="600">App.tsx</text>
+
+    <rect x="150" y="200" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="265" y="243" text-anchor="middle" font-size="18">components/*</text>
+
+    <rect x="460" y="200" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="575" y="235" text-anchor="middle" font-size="18">services/geminiService</text>
+    <text x="575" y="255" text-anchor="middle" font-size="14" fill="#d0d7e3">fila síncrona + chamadas Gemini</text>
+
+    <rect x="770" y="200" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="885" y="235" text-anchor="middle" font-size="18">services/exporter</text>
+    <text x="885" y="255" text-anchor="middle" font-size="14" fill="#d0d7e3">validação &amp; projeções</text>
+
+    <rect x="150" y="360" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="265" y="395" text-anchor="middle" font-size="18">services/classifier</text>
+    <text x="265" y="415" text-anchor="middle" font-size="14" fill="#d0d7e3">usa callGeminiWithRetry</text>
+
+    <rect x="460" y="360" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="575" y="395" text-anchor="middle" font-size="18">services/contextMemory</text>
+    <text x="575" y="415" text-anchor="middle" font-size="14" fill="#d0d7e3">localStorage</text>
+
+    <rect x="770" y="360" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="885" y="395" text-anchor="middle" font-size="18">services/chatService</text>
+    <text x="885" y="415" text-anchor="middle" font-size="14" fill="#d0d7e3">RAG + Gemini</text>
+
+    <rect x="460" y="520" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="575" y="555" text-anchor="middle" font-size="18">services/forecast</text>
+
+    <rect x="770" y="520" width="230" height="70" rx="12" fill="#2d333b" stroke="#9fb4d9" stroke-width="2"/>
+    <text x="885" y="555" text-anchor="middle" font-size="18">services/rulesValidator</text>
+
+    <path d="M600 130 L600 200" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M600 270 L600 360" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M575 270 L575 360" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)" opacity="0.6"/>
+    <path d="M885 270 L885 360" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M575 430 L575 520" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M885 430 L885 520" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M265 270 L265 360" stroke="#8cb2ff" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <path d="M575 360 C575 320 885 320 885 360" stroke="#f59f0a" stroke-width="3" fill="none" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+    <text x="735" y="320" text-anchor="middle" font-size="14" fill="#fbd699">ciclo conceitual</text>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L6,3 z" fill="#8cb2ff" />
+    </marker>
+  </defs>
+</svg>

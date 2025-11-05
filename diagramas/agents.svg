@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">Arquitetura alvo multiagente</title>
+  <desc id="desc">Mostra agentes de interface, coordenação, cognitivos e operacionais conectados via event bus e memória compartilhada.</desc>
+  <rect width="1280" height="760" fill="#0f172a"/>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" fill="#e2e8f0">
+    <text x="640" y="60" text-anchor="middle" font-size="26" font-weight="600">Visão de alto nível dos agentes</text>
+
+    <rect x="80" y="120" width="320" height="520" rx="16" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+    <text x="240" y="160" text-anchor="middle" font-size="20" font-weight="600">Frontend</text>
+    <rect x="130" y="200" width="220" height="100" rx="12" fill="#334155" stroke="#64748b" stroke-width="2"/>
+    <text x="240" y="240" text-anchor="middle" font-size="18">Interface Agent</text>
+    <text x="240" y="262" text-anchor="middle" font-size="13" fill="#cbd5f5">UX intents · session state</text>
+
+    <rect x="480" y="120" width="320" height="520" rx="16" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+    <text x="640" y="160" text-anchor="middle" font-size="20" font-weight="600">Orchestration</text>
+    <rect x="520" y="200" width="240" height="100" rx="12" fill="#334155" stroke="#fbbf24" stroke-width="2"/>
+    <text x="640" y="240" text-anchor="middle" font-size="18">Planner / Router</text>
+    <text x="640" y="262" text-anchor="middle" font-size="13" fill="#fed7aa">Planos · guardrails</text>
+    <rect x="520" y="340" width="240" height="100" rx="12" fill="#334155" stroke="#fbbf24" stroke-width="2"/>
+    <text x="640" y="380" text-anchor="middle" font-size="18">Scheduler</text>
+    <text x="640" y="402" text-anchor="middle" font-size="13" fill="#fed7aa">Task DAG · retries</text>
+    <rect x="520" y="480" width="240" height="120" rx="12" fill="#334155" stroke="#fbbf24" stroke-width="2"/>
+    <text x="640" y="520" text-anchor="middle" font-size="18">Event Bus</text>
+    <text x="640" y="542" text-anchor="middle" font-size="13" fill="#fed7aa">NATS / gRPC-lite</text>
+
+    <rect x="880" y="120" width="320" height="520" rx="16" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+    <text x="1040" y="160" text-anchor="middle" font-size="20" font-weight="600">Backoffice Agents</text>
+    <rect x="930" y="200" width="220" height="90" rx="12" fill="#334155" stroke="#86efac" stroke-width="2"/>
+    <text x="1040" y="236" text-anchor="middle" font-size="17">Cognitive Analyst</text>
+    <text x="1040" y="256" text-anchor="middle" font-size="13" fill="#bbf7d0">Relatórios · RAG</text>
+    <rect x="930" y="320" width="220" height="90" rx="12" fill="#334155" stroke="#86efac" stroke-width="2"/>
+    <text x="1040" y="356" text-anchor="middle" font-size="17">Document ETL</text>
+    <text x="1040" y="376" text-anchor="middle" font-size="13" fill="#bbf7d0">Parsing · OCR</text>
+    <rect x="930" y="440" width="220" height="90" rx="12" fill="#334155" stroke="#86efac" stroke-width="2"/>
+    <text x="1040" y="476" text-anchor="middle" font-size="17">Compliance Validator</text>
+    <text x="1040" y="496" text-anchor="middle" font-size="13" fill="#bbf7d0">Regras fiscais · CNPJ</text>
+    <rect x="930" y="560" width="220" height="90" rx="12" fill="#334155" stroke="#86efac" stroke-width="2"/>
+    <text x="1040" y="596" text-anchor="middle" font-size="17">Forecast / Export</text>
+    <text x="1040" y="616" text-anchor="middle" font-size="13" fill="#bbf7d0">Simulações · SPED</text>
+
+    <rect x="520" y="630" width="240" height="60" rx="12" fill="#0f766e" stroke="#5eead4" stroke-width="2"/>
+    <text x="640" y="668" text-anchor="middle" font-size="16">Shared Memory &amp; Vector Store</text>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L6,3 z" fill="#38bdf8" />
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L6,3 z" fill="#86efac" />
+    </marker>
+  </defs>
+  <g stroke-width="3" fill="none">
+    <path d="M350 250 C 420 250 520 250 520 250" stroke="#38bdf8" marker-end="url(#arrow)"/>
+    <path d="M350 250 C 420 250 520 290 520 290" stroke="#38bdf8" marker-end="url(#arrow)" opacity="0.8"/>
+    <path d="M520 520 C 760 520 930 240 930 240" stroke="#86efac" marker-end="url(#arrow-green)"/>
+    <path d="M520 520 C 760 520 930 360 930 360" stroke="#86efac" marker-end="url(#arrow-green)" opacity="0.85"/>
+    <path d="M520 520 C 760 520 930 480 930 480" stroke="#86efac" marker-end="url(#arrow-green)" opacity="0.85"/>
+    <path d="M520 520 C 760 520 930 600 930 600" stroke="#86efac" marker-end="url(#arrow-green)" opacity="0.85"/>
+    <path d="M350 250 C 430 250 640 520 640 630" stroke="#38bdf8" marker-end="url(#arrow)" opacity="0.6"/>
+    <path d="M640 630 C 760 630 1040 630 1040 600" stroke="#86efac" marker-end="url(#arrow-green)" opacity="0.6"/>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+{
+  "baseline": {
+    "hitRatio": 0.52,
+    "latencyP95Ms": 4800,
+    "notes": "Valores capturados antes da política multi-camada."
+  },
+  "target": {
+    "hitRatio": 0.85,
+    "latencyP95Ms": 3200,
+    "notes": "Preencher após execução de C3."
+  }
+}

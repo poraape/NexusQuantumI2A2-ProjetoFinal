@@ -1,0 +1,25 @@
+{
+  "title": "Agent Health",
+  "panels": [
+    {
+      "id": "latency",
+      "type": "timeseries",
+      "metric": "agent_latency_p95_ms",
+      "targets": ["interface", "planner", "etl", "cognitive"],
+      "thresholds": {"warning": 0.9, "critical": 1.0}
+    },
+    {
+      "id": "error-rate",
+      "type": "stat",
+      "metric": "agent_error_rate",
+      "targets": ["interface", "planner", "etl", "cognitive"],
+      "thresholds": {"warning": 0.008, "critical": 0.01}
+    },
+    {
+      "id": "queue-depth",
+      "type": "timeseries",
+      "metric": "event_bus_queue_depth",
+      "thresholds": {"warning": 80, "critical": 100}
+    }
+  ]
+}

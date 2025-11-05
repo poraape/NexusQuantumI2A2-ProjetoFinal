@@ -1,0 +1,15 @@
+scenarios:
+  - name: peak-hour
+    duration: 15m
+    arrivalRate: 20
+    rampTo: 40
+    agents:
+      - interface
+      - planner
+      - etl
+  - name: export-heavy
+    duration: 10m
+    arrivalRate: 10
+    agents:
+      - automation
+      - validator

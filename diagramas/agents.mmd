@@ -1,0 +1,50 @@
+graph TD
+  subgraph Interface
+    IA[Interface Agent]
+  end
+  subgraph Coordination
+    PL[Planner Agent]
+    SC[Scheduler Service]
+    EB[(Event Bus)]
+  end
+  subgraph Memory
+    MEM[(Blackboard / Vector Store)]
+  end
+  subgraph Cognitive
+    CG[Cognitive Analyst]
+    FC[Forecast Agent]
+  end
+  subgraph Operational
+    ETL[Document ETL]
+    VAL[Compliance Validator]
+    AUT[Automation & Export]
+  end
+  subgraph Observability
+    OBS[Observability Agent]
+  end
+
+  IA -->|Intents| PL
+  PL --> SC
+  SC --> EB
+  EB --> ETL
+  EB --> VAL
+  EB --> FC
+  EB --> CG
+  EB --> AUT
+  PL -->|Prompts| CG
+  PL -->|Tasks| ETL
+  PL -->|Tasks| VAL
+  PL -->|Tasks| AUT
+  CG --> MEM
+  FC --> MEM
+  ETL --> MEM
+  VAL --> MEM
+  AUT --> MEM
+  MEM -->|Snapshots| PL
+  MEM -->|Context| CG
+  MEM -->|Forecast baselines| FC
+  EB --> IA
+  IA -->|Feedback| MEM
+  OBS -->|Traces| MEM
+  OBS --> EB
+  EB --> OBS

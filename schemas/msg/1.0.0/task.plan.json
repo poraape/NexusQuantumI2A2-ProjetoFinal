@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexusquantum.dev/schemas/msg/1.0.0/task.plan.json",
+  "title": "Planner Task Plan",
+  "type": "object",
+  "required": ["schemaVersion", "headers", "plan"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "headers": {
+      "type": "object",
+      "required": ["traceId", "agentId", "timestamp"],
+      "properties": {
+        "traceId": {"type": "string"},
+        "agentId": {"type": "string"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "correlationId": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "required": ["planId", "tasks", "edges"],
+      "properties": {
+        "planId": {"type": "string"},
+        "intentType": {"type": "string"},
+        "priority": {"type": "string", "enum": ["low", "normal", "high"]},
+        "deadlineMs": {"type": "integer", "minimum": 0},
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["taskId", "taskType", "assignee"],
+            "properties": {
+              "taskId": {"type": "string"},
+              "taskType": {"type": "string"},
+              "assignee": {"type": "string"},
+              "retries": {"type": "integer", "minimum": 0, "default": 3},
+              "timeoutMs": {"type": "integer", "minimum": 0},
+              "payload": {"type": "object", "additionalProperties": true}
+            },
+            "additionalProperties": false
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": {
+              "from": {"type": "string"},
+              "to": {"type": "string"},
+              "condition": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
