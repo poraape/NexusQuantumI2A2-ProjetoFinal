@@ -1,0 +1,41 @@
+version: 1
+updatedAt: 2025-02-15T00:00:00Z
+rules:
+  - name: parse-documents
+    queue: parse
+    minBatchSize: 2
+    maxBatchSize: 8
+    maxWaitMs: 750
+    timeoutMs: 60000
+    retry:
+      maxAttempts: 3
+      backoffMs: 500
+      strategy: exponential
+    circuitBreaker:
+      failureThreshold: 5
+      resetTimeoutMs: 120000
+  - name: cognitive-summary
+    queue: summarize
+    minBatchSize: 1
+    maxBatchSize: 4
+    maxWaitMs: 1500
+    timeoutMs: 90000
+    retry:
+      maxAttempts: 2
+      backoffMs: 1000
+      strategy: jittered
+    circuitBreaker:
+      failureThreshold: 3
+      resetTimeoutMs: 180000
+observability:
+  metrics:
+    - name: batch_size_avg
+      help: Média do tamanho de lotes processados por regra
+    - name: batch_wait_ms
+      help: Tempo médio de espera antes do despacho
+  tracing:
+    enabled: true
+    attributes:
+      - batch.id
+      - rule.name
+      - agent.id

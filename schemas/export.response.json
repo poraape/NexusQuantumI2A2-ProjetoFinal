@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExportResponse",
+  "type": "object",
+  "required": ["exportId", "status", "artifacts"],
+  "properties": {
+    "exportId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "failed", "pending"]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "url"],
+        "properties": {
+          "type": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "checksum": { "type": "string" }
+        }
+      }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

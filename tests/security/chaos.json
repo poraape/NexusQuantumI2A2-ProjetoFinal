@@ -1,0 +1,11 @@
+{
+  "scenarios": [
+    {
+      "name": "permission-escalation",
+      "steps": [
+        "simulate agent without scope accessing compliance.write",
+        "expect audit event"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+alerts:
+  - name: bus-backlog
+    description: Backlog acima de 100 mensagens por 5 minutos
+    expression: avg_over_time(event_bus_queue_depth[5m]) > 100
+    severity: high
+    runbook: playbooks/bus_congestion.md
+  - name: memory-integrity
+    description: Falhas de integridade na memória compartilhada
+    expression: increase(memory_corruption_total[1h]) > 0
+    severity: critical
+    runbook: playbooks/memory_corruption.md

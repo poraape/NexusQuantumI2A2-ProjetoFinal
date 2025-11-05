@@ -1,0 +1,27 @@
+[
+  {
+    "traceId": "00000000000000000000000000000001",
+    "spanId": "0000000000000001",
+    "name": "handleFileUpload",
+    "startTime": "2025-02-01T12:00:00.000Z",
+    "endTime": "2025-02-01T12:00:00.180Z",
+    "attributes": {
+      "component": "ui",
+      "files.count": 3,
+      "session.id": "demo-session"
+    }
+  },
+  {
+    "traceId": "00000000000000000000000000000001",
+    "spanId": "0000000000000002",
+    "parentSpanId": "0000000000000001",
+    "name": "gemini.queue.enqueue",
+    "startTime": "2025-02-01T12:00:00.020Z",
+    "endTime": "2025-02-01T12:00:05.020Z",
+    "attributes": {
+      "component": "ai",
+      "queue.depth": 1,
+      "retry.count": 0
+    }
+  }
+]

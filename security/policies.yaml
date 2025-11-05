@@ -1,0 +1,53 @@
+version: 1
+updatedAt: 2025-02-15
+agents:
+  interface:
+    permissions:
+      - intents:write
+      - session:read
+    quotas:
+      requestsPerMinute: 600
+      concurrentSessions: 200
+  planner:
+    permissions:
+      - intents:read
+      - plans:write
+      - memory:read
+    quotas:
+      requestsPerMinute: 300
+      plansPerHour: 180
+  scheduler:
+    permissions:
+      - plans:read
+      - dispatch:write
+    quotas:
+      dispatchPerMinute: 400
+  etl:
+    permissions:
+      - storage:read
+      - structured-data:write
+    quotas:
+      jobsPerMinute: 120
+  validator:
+    permissions:
+      - structured-data:read
+      - compliance:write
+    quotas:
+      jobsPerMinute: 150
+  cognitive:
+    permissions:
+      - structured-data:read
+      - reports:write
+      - vector:read
+    quotas:
+      tokensPerMinute: 80000
+      requestsPerMinute: 60
+  automation:
+    permissions:
+      - structured-data:read
+      - exports:write
+    quotas:
+      jobsPerMinute: 60
+observability:
+  auditLog: audits/
+  alertChannel: alerts/security.yaml

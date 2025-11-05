@@ -1,0 +1,11 @@
+alerts:
+  - name: agent-permission-violation
+    description: Detecta agentes acessando recursos fora do escopo
+    expression: rate(security_permission_denied_total[5m]) > 0
+    severity: critical
+    runbook: playbooks/security-incident.md
+  - name: rationale-missing
+    description: Eventos sem rationale anexado
+    expression: rate(agent_output_missing_rationale_total[15m]) > 0
+    severity: warning
+    runbook: playbooks/explainability-gap.md

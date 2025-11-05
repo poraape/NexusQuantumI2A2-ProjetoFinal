@@ -1,0 +1,129 @@
+version: 1.0.0
+issued_at: 2024-05-20T00:00:00Z
+agents:
+  interface.agent:
+    description: Interface/UX mediator
+    permissions:
+      publish:
+        - topic: intents.v1
+          rate_limit_per_minute: 600
+      subscribe:
+        - topic: planner.updates.v1
+          filters:
+            session_scope: self
+    secrets:
+      - name: websocket_token
+        rotation: 24h
+  planner.agent:
+    description: Planner & router
+    permissions:
+      publish:
+        - topic: plans.v1
+        - topic: tasks.dispatch.v1
+      subscribe:
+        - topic: intents.v1
+        - topic: memory.snapshots.v1
+      call:
+        - service: policy.guardrails
+          timeout_ms: 200
+    secrets:
+      - name: planner-signing-key
+        rotation: 12h
+  etl.agent:
+    description: Document ingestion
+    permissions:
+      publish:
+        - topic: documents.parsed.v1
+      subscribe:
+        - topic: tasks.dispatch.v1
+          filters:
+            task_type: parse
+      call:
+        - service: storage.blob
+          timeout_ms: 5000
+    quotas:
+      cpu:
+        limit_mcpu: 500
+      memory:
+        limit_mb: 1024
+  validator.agent:
+    description: Compliance validation
+    permissions:
+      publish:
+        - topic: compliance.flags.v1
+      subscribe:
+        - topic: documents.parsed.v1
+      call:
+        - service: external.cnpj
+          timeout_ms: 1500
+          retries: 2
+    quotas:
+      outbound_requests_per_minute: 60
+  cognitive.agent:
+    description: Cognitive reasoning
+    permissions:
+      publish:
+        - topic: reports.executive.v1
+      subscribe:
+        - topic: planner.prompts.v1
+        - topic: memory.snapshots.v1
+      call:
+        - service: model.gateway
+          timeout_ms: 60000
+          circuit_breaker:
+            error_rate_threshold: 0.05
+            cooldown_seconds: 30
+    secrets:
+      - name: model-gateway-token
+        rotation: 6h
+  automation.agent:
+    description: Export automation
+    permissions:
+      publish:
+        - topic: exports.ready.v1
+      subscribe:
+        - topic: compliance.flags.v1
+      call:
+        - service: erp.adapter
+          timeout_ms: 3000
+    quotas:
+      outbound_requests_per_minute: 45
+  forecast.agent:
+    description: Forecast and simulation
+    permissions:
+      publish:
+        - topic: forecasts.ready.v1
+      subscribe:
+        - topic: memory.snapshots.v1
+        - topic: planner.prompts.v1
+      call:
+        - service: model.gateway.light
+          timeout_ms: 5000
+  memory.service:
+    description: Shared context
+    permissions:
+      publish:
+        - topic: memory.snapshots.v1
+      subscribe:
+        - topic: tasks.dispatch.v1
+          filters:
+            task_type: memory
+      call:
+        - service: vector.store
+          timeout_ms: 800
+    quotas:
+      storage_gb: 250
+      snapshots_per_hour: 120
+  observability.agent:
+    description: Telemetry collector
+    permissions:
+      publish:
+        - topic: telemetry.metrics.v1
+        - topic: telemetry.traces.v1
+      subscribe:
+        - topic: *
+          filters:
+            allow_traces: true
+    retention:
+      metrics_days: 30
+      traces_days: 7

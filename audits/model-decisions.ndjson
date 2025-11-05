@@ -1,0 +1,1 @@
+{"timestamp":"2025-02-15T00:00:00Z","modelId":"cognitive-analyst-v1","decision":"promote","metrics":{"execSummaryAccuracy":0.93,"hallucinationRate":0.03}}

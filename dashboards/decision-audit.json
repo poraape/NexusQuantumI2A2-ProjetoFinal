@@ -1,0 +1,16 @@
+{
+  "title": "Decision Audit",
+  "panels": [
+    {
+      "id": "rationale-log",
+      "type": "log",
+      "source": "audits/*.ndjson"
+    },
+    {
+      "id": "compliance-flags",
+      "type": "table",
+      "columns": ["timestamp", "agentId", "flag", "severity"],
+      "source": "audits/sample-trail.ndjson"
+    }
+  ]
+}

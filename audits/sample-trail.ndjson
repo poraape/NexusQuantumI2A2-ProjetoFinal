@@ -1,0 +1,1 @@
+{"timestamp":"2025-02-15T00:00:00Z","agentId":"cognitive","action":"generate-report","inputs":{"analysisId":"demo"},"outputs":{"status":"success"},"rationale":"Selecionadas demonstrações fiscais relevantes","references":["memory://reports-v1/demo"]}

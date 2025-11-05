@@ -1,0 +1,24 @@
+{
+  "title": "Cost & Usage",
+  "panels": [
+    {
+      "id": "cost-per-task",
+      "type": "timeseries",
+      "metric": "cost_per_task",
+      "targets": ["cognitive", "etl", "validator"],
+      "thresholds": {"warning": 0.8, "critical": 1.0}
+    },
+    {
+      "id": "modelQuality",
+      "type": "table",
+      "columns": ["model", "accuracy", "cost"],
+      "source": "models/catalog.yaml"
+    },
+    {
+      "id": "cacheHitRate",
+      "type": "stat",
+      "metric": "cache_hit_ratio",
+      "thresholds": {"warning": 0.75, "critical": 0.7}
+    }
+  ]
+}

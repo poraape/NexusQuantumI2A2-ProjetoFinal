@@ -1,0 +1,13 @@
+{
+  "name": "default-multiagent",
+  "agents": [
+    { "id": "interface", "role": "Interface Agent", "connections": ["planner"] },
+    { "id": "planner", "role": "Planner", "connections": ["scheduler", "memory"] },
+    { "id": "scheduler", "role": "Scheduler", "connections": ["event-bus"] },
+    { "id": "event-bus", "role": "Event Bus", "connections": ["etl", "validator", "cognitive"] },
+    { "id": "etl", "role": "Document ETL", "connections": ["memory"] },
+    { "id": "validator", "role": "Compliance", "connections": ["memory"] },
+    { "id": "cognitive", "role": "Cognitive Analyst", "connections": ["memory"] },
+    { "id": "memory", "role": "Blackboard", "connections": [] }
+  ]
+}

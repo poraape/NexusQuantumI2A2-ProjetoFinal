@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportResponse",
+  "type": "object",
+  "required": ["sessionId", "reports"],
+  "properties": {
+    "sessionId": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "reports": {
+      "type": "object",
+      "required": ["executiveSummary", "comparativeAnalysis", "simulations"],
+      "properties": {
+        "executiveSummary": {
+          "type": "object",
+          "required": ["highlights", "risks"],
+          "properties": {
+            "highlights": { "type": "array", "items": { "type": "string" } },
+            "risks": { "type": "array", "items": { "type": "string" } },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "comparativeAnalysis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "delta"],
+            "properties": {
+              "label": { "type": "string" },
+              "delta": { "type": "number" },
+              "evidence": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "simulations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["scenarioId", "description", "metrics"],
+            "properties": {
+              "scenarioId": { "type": "string" },
+              "description": { "type": "string" },
+              "metrics": {
+                "type": "object",
+                "additionalProperties": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

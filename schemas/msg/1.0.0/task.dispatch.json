@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexusquantum.dev/schemas/msg/1.0.0/task.dispatch.json",
+  "title": "Task Dispatch",
+  "type": "object",
+  "required": ["schemaVersion", "headers", "task"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "headers": {
+      "type": "object",
+      "required": ["traceId", "agentId", "timestamp", "planId"],
+      "properties": {
+        "traceId": {"type": "string"},
+        "agentId": {"type": "string"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "planId": {"type": "string"},
+        "taskId": {"type": "string"},
+        "retryCount": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "required": ["taskType", "assignee", "payload"],
+      "properties": {
+        "taskType": {"type": "string"},
+        "assignee": {"type": "string"},
+        "payload": {"type": "object", "additionalProperties": true},
+        "timeoutMs": {"type": "integer", "minimum": 0},
+        "deadlineMs": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

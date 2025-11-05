@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<n_fe_proc>
+  <n_fe>
+    <inf_n_fe>
+      <ide>
+        <c_uf>35</c_uf>
+        <nat_op>VENDA</nat_op>
+        <mod>55</mod>
+        <serie>1</serie>
+        <n_nf>12345</n_nf>
+        <dh_emi>2024-01-10T10:00:00-03:00</dh_emi>
+      </ide>
+      <emit>
+        <cnpj>12345678000190</cnpj>
+        <x_nome>Empresa Teste Ltda</x_nome>
+        <ender_emit>
+          <uf>SP</uf>
+        </ender_emit>
+      </emit>
+      <dest>
+        <cnpj>09876543000109</cnpj>
+        <x_nome>Cliente Demo SA</x_nome>
+        <ender_dest>
+          <uf>RJ</uf>
+        </ender_dest>
+      </dest>
+      <total>
+        <icms_tot>
+          <v_nf>1000.00</v_nf>
+        </icms_tot>
+      </total>
+    </inf_n_fe>
+  </n_fe>
+</n_fe_proc>

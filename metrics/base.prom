@@ -1,0 +1,30 @@
+# HELP nexus_upload_duration_seconds Latência de upload em segundos (P95 alvo 0.3)
+# TYPE nexus_upload_duration_seconds summary
+nexus_upload_duration_seconds{quantile="0.5"} 0.12
+nexus_upload_duration_seconds{quantile="0.95"} 0.29
+nexus_upload_duration_seconds_sum 1.44
+nexus_upload_duration_seconds_count 8
+
+# HELP nexus_gemini_queue_depth Profundidade da fila de chamadas Gemini
+# TYPE nexus_gemini_queue_depth gauge
+nexus_gemini_queue_depth 1
+
+# HELP nexus_export_success_ratio Taxa de sucesso de exportações
+# TYPE nexus_export_success_ratio gauge
+nexus_export_success_ratio 0.99
+
+# HELP cache_hit_total Número de hits no cache multi-camada
+# TYPE cache_hit_total counter
+cache_hit_total 1200
+
+# HELP cache_miss_total Número de misses no cache multi-camada
+# TYPE cache_miss_total counter
+cache_miss_total 210
+
+# HELP batch_size_avg Tamanho médio de lote por janela
+# TYPE batch_size_avg gauge
+batch_size_avg 3.2
+
+# HELP batch_wait_ms Tempo médio de espera até formação do lote
+# TYPE batch_wait_ms gauge
+batch_wait_ms 420

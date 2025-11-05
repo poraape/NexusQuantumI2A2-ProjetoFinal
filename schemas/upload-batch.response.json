@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UploadBatchResponse",
+  "type": "object",
+  "required": ["batchId", "status", "acceptedAt"],
+  "properties": {
+    "batchId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "rejected"]
+    },
+    "acceptedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "retryAfterMs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

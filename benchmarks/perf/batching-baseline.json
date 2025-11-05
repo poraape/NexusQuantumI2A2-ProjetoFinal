@@ -1,0 +1,5 @@
+{
+  "throughputPerMinute": 12,
+  "avgBatchSize": 1,
+  "notes": "Baseline antes do batching inteligente."
+}

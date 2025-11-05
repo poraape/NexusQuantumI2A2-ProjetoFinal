@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexusquantum.dev/schemas/msg/1.0.0/intent.envelope.json",
+  "title": "Interface Intent Envelope",
+  "type": "object",
+  "required": ["schemaVersion", "headers", "payload"],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "headers": {
+      "type": "object",
+      "required": ["traceId", "agentId", "timestamp", "sessionId"],
+      "properties": {
+        "traceId": {"type": "string", "minLength": 16},
+        "agentId": {"type": "string", "pattern": "^[a-z0-9\\.]+$"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "sessionId": {"type": "string"},
+        "causationId": {"type": "string"},
+        "channel": {"type": "string", "enum": ["web", "api"]}
+      },
+      "additionalProperties": false
+    },
+    "payload": {
+      "type": "object",
+      "required": ["intentType", "arguments"],
+      "properties": {
+        "intentType": {
+          "type": "string",
+          "enum": [
+            "upload.analyze",
+            "report.refresh",
+            "chat.prompt",
+            "export.generate"
+          ]
+        },
+        "arguments": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["uri", "hash"],
+                "properties": {
+                  "uri": {"type": "string", "format": "uri"},
+                  "hash": {"type": "string", "minLength": 32},
+                  "contentType": {"type": "string"},
+                  "sizeBytes": {"type": "integer", "minimum": 0}
+                },
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "message": {"type": "string"},
+            "scenarioId": {"type": "string"},
+            "uiVersion": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,48 @@
+apiVersion: gateway.nexus.dev/v1alpha1
+kind: EdgeGateway
+metadata:
+  name: planner-channel
+spec:
+  listeners:
+    - name: websocket-ui
+      protocol: wss
+      port: 443
+      tls:
+        mode: mtls
+        certificateRef: secrets/ui-gateway-cert
+        clientCaRef: secrets/ui-clients-ca
+        minVersion: TLSv1.3
+  routes:
+    - match:
+        path: /ws/planner
+      upstream: planner-bff
+      auth:
+        type: token
+        header: x-session-token
+        ttlSeconds: 600
+      rateLimit:
+        unit: minute
+        requests: 900
+      retryPolicy:
+        retryOn: [connect-failure, refused-stream]
+        numRetries: 5
+        perTryTimeoutMs: 5000
+  upstreams:
+    - name: planner-bff
+      endpoints:
+        - host: planner-bff.default.svc.cluster.local
+          port: 8080
+      tls:
+        mode: mtls
+        certificateRef: secrets/planner-gateway-cert
+        clientCaRef: secrets/planner-ca
+      circuitBreaker:
+        maxConnections: 1000
+        maxPendingRequests: 200
+        maxRequests: 2000
+        maxRetries: 3
+  observability:
+    accessLog: stdout
+    metrics:
+      enabled: true
+      endpoint: otel-collector.default.svc.cluster.local:4317
