@@ -27,6 +27,7 @@ yarn-debug.log*
 # Dados de Serviços (Docker)
 # Ignora a pasta de dados persistentes do Weaviate.
 weaviate_data/
+.uploads/
 
 # Arquivos de Sistema Operacional
 .DS_Store

@@ -1,6 +1,7 @@
 // backend/agents/analysisAgent.js
 
 const { model, availableTools } = require('../services/geminiClient');
+const { buildAnalysisContext } = require('../services/artifactUtils');
 
 function robustJsonParse(jsonString) {
     // Tenta extrair o JSON de um bloco de código Markdown
@@ -21,19 +22,50 @@ function robustJsonParse(jsonString) {
     }
 }
 
-function register({ eventBus, updateJobStatus }) {
+function estimateTokens(text) {
+    return Math.ceil((text || '').length / 4);
+}
+
+function register({ eventBus, updateJobStatus, metrics }) {
     // Agente de Análise (IA)
     eventBus.on('task:start', async ({ jobId, taskName, payload }) => {
         if (taskName !== 'analysis') return;
         try {
-            const { fileContentsForAnalysis } = payload;
+            const artifacts = payload.artifacts || [];
+            const fileContentsForAnalysis = payload.fileContentsForAnalysis || artifacts.map(art => ({ fileName: art.fileName, content: art.text }));
             await updateJobStatus(jobId, 3, 'in-progress', 'Ag. Inteligência: Gerando análise executiva...');
-            const combinedContent = fileContentsForAnalysis.map(f => `--- START FILE: ${f.fileName} ---\n${f.content}`).join('\n\n').substring(0, 30000);
+            const { context, stats } = buildAnalysisContext(artifacts);
+
             const prompt = `
-                Analise o conteúdo dos seguintes arquivos e gere um resumo executivo em JSON. Se o valor total das notas for superior a 100000, use a ferramenta 'tax_simulation' para o regime 'Lucro Real'.
-                Estrutura do JSON final: { "title": "string", "description": "string", "keyMetrics": { "numeroDeDocumentosValidos": number, "valorTotalDasNfes": number, "valorTotalDosProdutos": number, "indiceDeConformidadeICMS": "string (ex: '99.5%')", "nivelDeRiscoTributario": "string (ex: 'Baixo', 'Médio', 'Alto')", "estimativaDeNVA": number }, "actionableInsights": [{ "text": "string" }], "simulationResult": object | null }
-                CONTEÚDO: ${combinedContent}
-            `;
+Você é um analista fiscal especializado. Com base nos dados agregados e nos resumos abaixo, produza um JSON seguindo a estrutura:
+{
+  "title": string,
+  "description": string,
+  "keyMetrics": {
+    "numeroDeDocumentosValidos": number,
+    "valorTotalDasNfes": number,
+    "valorTotalDosProdutos": number,
+    "indiceDeConformidadeICMS": string,
+    "nivelDeRiscoTributario": string,
+    "estimativaDeNVA": number
+  },
+  "actionableInsights": [{ "text": string }],
+  "simulationResult": object | null
+}
+
+Use as estatísticas agregadas e o contexto resumido. Se identificar que o valor total das notas supera 100000, use a ferramenta 'tax_simulation' com regime 'Lucro Real'.
+
+Estatísticas agregadas:
+${JSON.stringify(stats, null, 2)}
+
+Contexto resumido:
+${context || fileContentsForAnalysis.map(f => `### Documento: ${f.fileName}\n${(f.content || '').slice(0, 1200)}`).join('\n\n')}
+`;
+
+            const tokens = estimateTokens(prompt);
+            if (metrics && typeof metrics.observeSummary === 'function') {
+                metrics.observeSummary('analysis_prompt_tokens', tokens);
+            }
 
             const chat = model.startChat({
                 tools: availableTools,

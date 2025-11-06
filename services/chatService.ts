@@ -23,6 +23,9 @@ interface GeminiResponse {
 
 const TOKEN_BUDGET = 7500;
 const CONTEXT_TRUNCATION_RATIO = 0.9;
+const MAX_RAG_SNIPPETS = parseInt(import.meta.env?.VITE_CHAT_MAX_RAG_SNIPPETS ?? '6', 10);
+const RAG_SNIPPET_LENGTH = parseInt(import.meta.env?.VITE_CHAT_RAG_SNIPPET_LENGTH ?? '600', 10);
+const ATTACHMENT_SNIPPET_LENGTH = parseInt(import.meta.env?.VITE_CHAT_ATTACHMENT_SNIPPET_LENGTH ?? '800', 10);
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -87,7 +90,15 @@ export async function getChatResponse(
     }
 
     const ragChunks = searchIndex(trimmedQuestion);
-    let ragContext = ragChunks.map(chunk => chunk.content).join('\n\n---\n\n');
+    const topRagChunks = ragChunks.slice(0, MAX_RAG_SNIPPETS);
+    if (ragChunks.length > MAX_RAG_SNIPPETS) {
+        logError({
+            source: 'ChatService',
+            message: `Contexto RAG retornou ${ragChunks.length} trechos. Utilizando os ${MAX_RAG_SNIPPETS} mais relevantes.`,
+            severity: 'info',
+        });
+    }
+    let ragContext = buildRagContext(topRagChunks);
     let fallbackContext = '';
 
     if (ragContext.trim().length < 10 && processedFiles.length > 0) {
@@ -139,6 +150,12 @@ export async function getChatResponse(
     });
 
     try {
+        logError({
+            source: 'ChatService',
+            message: `Prompt construído com aproximadamente ${estimateTokens(prompt)} tokens.`,
+            severity: 'info',
+        });
+
         const responseText = await callGeminiText(prompt, logError);
         if (attachments.length === 0) {
             cacheAnswer(trimmedQuestion, responseText);
@@ -392,13 +409,13 @@ async function convertAttachmentsToText(files: File[], logError: LogFn): Promise
 
             const extracted = await extractFullTextFromFile(file);
             if (extracted && extracted.trim()) {
-                snippets.push(`ARQUIVO ANEXADO: ${file.name}\n${extracted}`);
+                snippets.push(`ARQUIVO ANEXADO: ${file.name}\n${sanitizeSnippet(extracted, ATTACHMENT_SNIPPET_LENGTH)}`);
                 continue;
             }
 
             const fallback = await file.text();
             if (fallback && fallback.trim()) {
-                snippets.push(`ARQUIVO ANEXADO: ${file.name}\n${fallback}`);
+                snippets.push(`ARQUIVO ANEXADO: ${file.name}\n${sanitizeSnippet(fallback, ATTACHMENT_SNIPPET_LENGTH)}`);
             }
         } catch (error) {
             logError({
@@ -415,6 +432,22 @@ async function convertAttachmentsToText(files: File[], logError: LogFn): Promise
 function appendBlock(current: string, block: string): string {
     if (!block.trim()) return current;
     return current.trim().length > 0 ? `${current}\n\n${block}` : block;
+}
+
+function sanitizeSnippet(text: string, maxLength: number): string {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
+}
+
+function buildRagContext(chunks: Array<{ content: string; fileName?: string }>): string {
+    if (!chunks || chunks.length === 0) return '';
+    return chunks
+        .map((chunk, index) => {
+            const snippet = sanitizeSnippet(chunk.content, RAG_SNIPPET_LENGTH);
+            const source = chunk.fileName || `Trecho ${index + 1}`;
+            return `### Fonte ${index + 1}: ${source}\n${snippet}`;
+        })
+        .join('\n\n');
 }
 
 function formatForecastContext(forecast: ForecastResult): string {

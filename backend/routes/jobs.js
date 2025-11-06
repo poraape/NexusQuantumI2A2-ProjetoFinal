@@ -28,7 +28,8 @@ module.exports = (context) => {
         embeddingModel,
         model,
         availableTools,
-        weaviate
+        weaviate,
+        storageService,
     } = context;
 
     // --- Endpoints de Processamento Assíncrono ---
@@ -37,11 +38,23 @@ module.exports = (context) => {
         const jobId = uuidv4();
         console.log(`[BFF] Novo job criado com ID: ${jobId}`);
 
+        let storedFiles;
+        try {
+            storedFiles = await storageService.persistUploadedFiles(req.files || []);
+        } catch (error) {
+            console.error('[Upload] Falha ao persistir arquivos enviados:', error);
+            return res.status(500).json({ message: 'Não foi possível armazenar os arquivos enviados.' });
+        }
+
+        if (storedFiles.length === 0) {
+            return res.status(400).json({ message: 'Nenhum arquivo válido foi armazenado.' });
+        }
+
         // Inicializa o status do job
         const newJob = {
             status: 'processing',
             pipeline: [
-                { name: 'Extração de Dados', status: 'in-progress', info: 'Recebendo e descompactando arquivos...' },
+                { name: 'Extração de Dados', status: 'in-progress', info: `Processando ${storedFiles.length} arquivo(s)...` },
                 { name: 'Auditoria Inicial', status: 'pending' },
                 { name: 'Classificação Fiscal', status: 'pending' },
                 { name: 'Análise Executiva (IA)', status: 'pending' },
@@ -49,6 +62,12 @@ module.exports = (context) => {
             ],
             result: null,
             error: null,
+            uploadedFiles: storedFiles.map(file => ({
+                name: file.originalName,
+                hash: file.hash,
+                size: file.size,
+                mimeType: file.mimeType,
+            })),
         };
 
         // Armazena o novo job no Redis
@@ -58,7 +77,7 @@ module.exports = (context) => {
         res.status(202).json({ jobId });
 
         // Inicia o processamento em segundo plano (sem usar await aqui)
-        processFilesInBackground(jobId, req.files);
+        processFilesInBackground(jobId, storedFiles);
     });
 
     router.get('/:jobId/status', async (req, res) => {

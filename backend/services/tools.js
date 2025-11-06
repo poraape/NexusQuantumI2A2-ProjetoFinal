@@ -1,5 +1,6 @@
 // backend/services/tools.js
 const { getCnpjData } = require('./brasilAPI');
+const redisClient = require('./redisClient');
 
 /**
  * Simulates a tax calculation. In a real-world scenario, this would contain
@@ -35,7 +36,26 @@ async function tax_simulation({ baseValue, taxRegime }) {
 async function cnpj_validation({ cnpj }) {
     console.log(`[ToolsAgent] Executing cnpj_validation for: ${cnpj}`);
     const cleanedCnpj = cnpj.replace(/\D/g, ''); // Remove non-digit characters
-    return await getCnpjData(cleanedCnpj);
+    const cacheKey = `cnpj_validation:${cleanedCnpj}`;
+    try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) {
+            return JSON.parse(cached);
+        }
+    } catch (err) {
+        console.warn('[ToolsAgent] Falha ao consultar cache redis para CNPJ.', err);
+    }
+
+    const result = await getCnpjData(cleanedCnpj);
+
+    try {
+        const ttl = parseInt(process.env.CNPJ_CACHE_TTL_SECONDS || '604800', 10); // default 7 days
+        await redisClient.set(cacheKey, JSON.stringify(result), { EX: ttl });
+    } catch (err) {
+        console.warn('[ToolsAgent] Falha ao armazenar cache de CNPJ.', err);
+    }
+
+    return result;
 }
 
 module.exports = { tax_simulation, cnpj_validation };

@@ -7,6 +7,9 @@ module.exports = (context) => {
 
     // --- Health Check Endpoint ---
     router.get('/', async (req, res) => {
+        const hasEnvGeminiKey = Object.prototype.hasOwnProperty.call(process.env, 'GEMINI_API_KEY');
+        const currentGeminiKey = hasEnvGeminiKey ? process.env.GEMINI_API_KEY : geminiApiKey;
+
         const healthStatus = {
             status: 'ok',
             timestamp: new Date().toISOString(),
@@ -38,8 +41,10 @@ module.exports = (context) => {
         }
 
         // Check Gemini API Key
-        healthStatus.services.gemini_api = geminiApiKey ? 'ok' : 'error: API key not configured';
-        if (!geminiApiKey) isHealthy = false;
+        healthStatus.services.gemini_api = currentGeminiKey ? 'ok' : 'error: API key not configured';
+        if (!currentGeminiKey) isHealthy = false;
+
+        healthStatus.status = isHealthy ? 'ok' : 'error';
 
         res.status(isHealthy ? 200 : 503).json(healthStatus);
     });

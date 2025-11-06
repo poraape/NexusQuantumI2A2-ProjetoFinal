@@ -1,21 +1,31 @@
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-key';
+
+const mockRedisClient = {
+    ping: jest.fn(),
+};
+
+const mockWeaviateClientFactory = () => {
+    const liveCheckerResult = { do: jest.fn() };
+    return {
+        client: {
+            misc: {
+                liveChecker: jest.fn(() => liveCheckerResult),
+            },
+        },
+        __liveCheckerResult: liveCheckerResult,
+    };
+};
+
+const mockWeaviateClient = mockWeaviateClientFactory();
+
+jest.mock('../services/redisClient', () => mockRedisClient);
+jest.mock('../services/weaviateClient', () => mockWeaviateClient);
+jest.mock('../services/eventBus', () => ({ emit: jest.fn(), on: jest.fn() }));
+
 const request = require('supertest');
-const server = require('../server'); // Importa o servidor (sem iniciar a escuta)
 const redisClient = require('../services/redisClient');
 const weaviate = require('../services/weaviateClient');
-
-// Mock dos serviços externos
-jest.mock('../services/redisClient', () => ({
-    ping: jest.fn(),
-}));
-
-jest.mock('../services/weaviateClient', () => ({
-    client: {
-        misc: {
-            liveChecker: jest.fn().mockReturnThis(),
-            do: jest.fn(),
-        },
-    },
-}));
+const server = require('../server');
 
 describe('GET /api/health', () => {
     let originalApiKey;
@@ -30,14 +40,18 @@ describe('GET /api/health', () => {
     });
 
     beforeEach(() => {
-        // Reseta os mocks antes de cada teste
         jest.clearAllMocks();
         process.env.GEMINI_API_KEY = 'test-key'; // Define uma chave padrão para os testes
+        mockRedisClient.ping.mockReset();
+        const freshLiveChecker = { do: jest.fn() };
+        mockWeaviateClient.client.misc.liveChecker.mockImplementation(() => freshLiveChecker);
+        mockWeaviateClient.__liveCheckerResult = freshLiveChecker;
+        weaviate.__liveCheckerResult = freshLiveChecker;
     });
 
     it('should return 200 OK when all services are healthy', async () => {
         redisClient.ping.mockResolvedValue('PONG');
-        weaviate.client.misc.liveChecker().do.mockResolvedValue(true);
+        weaviate.__liveCheckerResult.do.mockResolvedValue(true);
 
         const response = await request(server).get('/api/health');
 
@@ -51,7 +65,7 @@ describe('GET /api/health', () => {
     it('should return 503 Service Unavailable when Redis is down', async () => {
         const redisError = new Error('Redis connection failed');
         redisClient.ping.mockRejectedValue(redisError);
-        weaviate.client.misc.liveChecker().do.mockResolvedValue(true);
+        weaviate.__liveCheckerResult.do.mockResolvedValue(true);
 
         const response = await request(server).get('/api/health');
 
@@ -64,7 +78,7 @@ describe('GET /api/health', () => {
     it('should return 503 Service Unavailable when Weaviate is down', async () => {
         const weaviateError = new Error('Weaviate not live');
         redisClient.ping.mockResolvedValue('PONG');
-        weaviate.client.misc.liveChecker().do.mockRejectedValue(weaviateError);
+        weaviate.__liveCheckerResult.do.mockRejectedValue(weaviateError);
 
         const response = await request(server).get('/api/health');
 
@@ -75,9 +89,9 @@ describe('GET /api/health', () => {
     });
 
     it('should return 503 Service Unavailable when Gemini API key is missing', async () => {
-        delete process.env.GEMINI_API_KEY; // Remove a chave de API
+        process.env.GEMINI_API_KEY = ''; // Simula ausência da chave de API
         redisClient.ping.mockResolvedValue('PONG');
-        weaviate.client.misc.liveChecker().do.mockResolvedValue(true);
+        weaviate.__liveCheckerResult.do.mockResolvedValue(true);
 
         const response = await request(server).get('/api/health');
 

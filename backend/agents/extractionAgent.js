@@ -1,33 +1,34 @@
 // backend/agents/extractionAgent.js
 
-const JSZip = require('jszip');
-const { extractText } = require('../services/parser');
+const extractor = require('../services/extractor');
 
-function register({ eventBus, updateJobStatus }) {
+function register({ eventBus, updateJobStatus, storageService }) {
     eventBus.on('task:start', async ({ jobId, taskName, payload }) => {
         if (taskName !== 'extraction') return;
 
         try {
-            const { files } = payload;
-            await updateJobStatus(jobId, 0, 'in-progress', `Descompactando e lendo ${files.length} arquivo(s)...`);
-            
+            const { filesMeta } = payload;
+            await updateJobStatus(jobId, 0, 'in-progress', `Descompactando e lendo ${filesMeta.length} arquivo(s)...`);
+
             const fileContentsForAnalysis = [];
-            for (const file of files) {
-                if (file.mimetype === 'application/zip') {
-                    const zip = await JSZip.loadAsync(file.buffer);
-                    for (const fileName in zip.files) {
-                        if (!zip.files[fileName].dir) {
-                            const textContent = await extractText(await zip.files[fileName].async('nodebuffer'), fileName);
-                            fileContentsForAnalysis.push({ fileName, content: textContent });
-                        }
-                    }
-                } else {
-                    const textContent = await extractText(file.buffer, file.mimetype, file.originalname);
-                    fileContentsForAnalysis.push({ fileName: file.originalname, content: textContent });
-                }
+            const artifacts = [];
+
+            for (const file of filesMeta) {
+                const extractedArtifacts = await extractor.extractArtifactsForFileMeta(file, storageService);
+                extractedArtifacts.forEach(artifact => {
+                    artifacts.push(artifact);
+                    fileContentsForAnalysis.push({ fileName: artifact.fileName, content: artifact.text });
+                });
             }
+
+            const nextPayload = {
+                ...payload,
+                artifacts,
+                fileContentsForAnalysis,
+            };
+
             await updateJobStatus(jobId, 0, 'completed');
-            eventBus.emit('task:completed', { jobId, taskName, resultPayload: { fileContentsForAnalysis }, payload });
+            eventBus.emit('task:completed', { jobId, taskName, resultPayload: { fileContentsForAnalysis, artifacts }, payload: nextPayload });
         } catch (error) {
             eventBus.emit('task:failed', { jobId, taskName, error: `Falha na extração: ${error.message}` });
         }

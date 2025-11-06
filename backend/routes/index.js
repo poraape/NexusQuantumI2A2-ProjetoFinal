@@ -3,6 +3,7 @@
 const jobsRouter = require('./jobs');
 const geminiRouter = require('./gemini');
 const healthRouter = require('./health');
+const metricsRouter = require('./metrics');
 
 /**
  * Registra todas as rotas da API no aplicativo Express.
@@ -22,6 +23,7 @@ function registerRoutes(app, context) {
     app.use('/api/jobs', jobsRouter(routeContext));
     app.use('/api/gemini', geminiRouter(routeContext));
     app.use('/api/health', healthRouter(routeContext));
+    app.use('/metrics', metricsRouter(routeContext));
 }
 
 module.exports = registerRoutes;
