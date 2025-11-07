@@ -14,7 +14,7 @@ validation:
 
 audit:
   next: classification
-  stepIndex: 2
+  stepIndex: 1 # Corrigido para ser sequencial após a validação
 
 classification:
   next: analysis
