@@ -32,14 +32,28 @@ const now = (): number => (typeof performance !== 'undefined' ? performance.now(
 export async function getAnswerFromBackend(
     jobId: string,
     question: string,
-    logError: LogFn
+    logError: LogFn,
+    attachments: File[] = []
 ): Promise<string> {
     try {
-        const response = await fetch(buildBackendHttpUrl(`/api/jobs/${jobId}/chat`), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question }),
-        });
+        const endpoint = buildBackendHttpUrl(`/api/jobs/${jobId}/chat`);
+        let response: Response;
+
+        if (attachments.length > 0) {
+            const formData = new FormData();
+            formData.append('question', question);
+            attachments.forEach(file => formData.append('attachments', file));
+            response = await fetch(endpoint, {
+                method: 'POST',
+                body: formData,
+            });
+        } else {
+            response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question }),
+            });
+        }
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ message: response.statusText }));

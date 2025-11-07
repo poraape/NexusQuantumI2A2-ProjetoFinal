@@ -19,6 +19,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [uploadInfo, setUploadInfo] = useState<string | null>(null);
   const [generatedReport, setGeneratedReport] = useState<GeneratedReport | null>(null);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [processedFiles, setProcessedFiles] = useState<File[]>([]);
   const [theme, setTheme] = useState<Theme>('dark');
   const [isErrorLogOpen, setIsErrorLogOpen] = useState(false);
@@ -87,6 +88,7 @@ function App() {
       }
 
       const { jobId } = await response.json();
+      setCurrentJobId(jobId);
       setUploadInfo(`Job ${jobId} iniciado. Acompanhando progresso...`);
 
       // 2. Conecta via WebSocket para receber atualizações em tempo real
@@ -124,6 +126,7 @@ function App() {
         if (!jobFinalized) {
             setError("A conexão com o servidor foi perdida.");
             setView('upload');
+            setCurrentJobId(null);
         }
       };
 
@@ -138,6 +141,7 @@ function App() {
       });
       updatePipelineStep(0, ProcessingStepStatus.FAILED);
       setView('upload');
+      setCurrentJobId(null);
     }
   };
 
@@ -149,6 +153,7 @@ function App() {
     setUploadInfo(null);
     setProcessedFiles([]);
     setPipelineSteps(INITIAL_PIPELINE_STEPS);
+    setCurrentJobId(null);
   };
   
   const renderContent = () => {
@@ -177,7 +182,7 @@ function App() {
         );
       case 'dashboard':
         if (generatedReport) {
-          return <Dashboard initialReport={generatedReport} processedFiles={processedFiles} onAnalyzeOther={handleAnalyzeOtherFiles} logError={logError} />;
+          return <Dashboard jobId={currentJobId} initialReport={generatedReport} processedFiles={processedFiles} onAnalyzeOther={handleAnalyzeOtherFiles} logError={logError} />;
         }
         return (
              <div className={commonWrapperClasses}>
@@ -198,6 +203,7 @@ function App() {
           onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           onOpenErrorLog={() => setIsErrorLogOpen(true)}
           processedFiles={view === 'dashboard' ? processedFiles : []}
+          jobId={currentJobId}
         />
         <main>
           {renderContent()}

@@ -119,6 +119,42 @@ O backend expõe uma API RESTful para o frontend. Abaixo estão os principais en
 
 ### Gerenciamento de Jobs
 
+---
+
+## ✅ Testes, CI e Observabilidade
+
+### Testes locais
+
+- **Backend (Jest):**
+  ```bash
+  GEMINI_API_KEY=test-key NODE_ENV=test npm --prefix backend test
+  ```
+  > Importante: em ambientes restritos (como alguns Codespaces) o sistema operacional pode bloquear `server.listen`, resultando em `EPERM`. Em máquinas de desenvolvimento ou na pipeline CI o conjunto de testes roda normalmente porque não há essa limitação de portas.
+
+- **Build Frontend (Vite):**
+  ```bash
+  npm run build
+  ```
+
+### Pipeline CI GitHub Actions
+
+O workflow [`ci.yml`](.github/workflows/ci.yml) executa automaticamente em cada push/pull request para `main` ou `teste`, realizando:
+
+1. `npm ci` no projeto raiz (frontend).
+2. `npm ci` no diretório `backend/`.
+3. `npm --prefix backend test`.
+4. `npm run build`.
+
+Isso garante que regressões sejam detectadas cedo, mesmo que localmente os testes não possam abrir sockets.
+
+### Observabilidade
+
+- **Logs estruturados:** todo request HTTP e eventos dos agentes usam `services/logger` (baseado em `pino`), facilitando coleta em ferramentas externas.
+- **Métricas:** o endpoint `/metrics` expõe contadores e histograms Prometheus (ex.: `http_request_duration_ms`, `jobs_started_total`). Basta apontar um Prometheus/Grafana para essa rota.
+- **Alertas internos:** o `alertAgent` continua emitindo eventos de risco/erros para o bus interno; basta conectar a um canal externo (Slack, e-mail) para alertas em produção.
+
+---
+
 *   **Endpoint:** `POST /api/jobs`
 *   **Descrição:** Inicia um novo job de análise de arquivos. A requisição deve ser do tipo `multipart/form-data`.
 *   **Validação de Schema:** O endpoint valida a quantidade de arquivos enviados:

@@ -16,6 +16,7 @@ interface DashboardProps {
   processedFiles: File[];
   onAnalyzeOther: () => void;
   logError: (error: Omit<LogError, 'timestamp'>) => void;
+  jobId?: string | null;
 }
 
 type DashboardView = 'analysis' | 'simulator' | 'fullText' | 'comparison';
@@ -27,7 +28,7 @@ type DashboardView = 'analysis' | 'simulator' | 'fullText' | 'comparison';
  * aos seus respectivos componentes, que são acionados sob demanda pelo usuário,
  * otimizando a performance e o uso de tokens.
  */
-export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFiles, onAnalyzeOther, logError }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFiles, onAnalyzeOther, logError, jobId }) => {
   const [report, setReport] = useState<GeneratedReport>(initialReport);
   const [view, setView] = useState<DashboardView>('analysis');
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
@@ -128,7 +129,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
             <InteractiveChat 
               report={report} 
               simulationResult={simulationResult} 
-              processedFiles={processedFiles} 
+              processedFiles={processedFiles}
+              jobId={jobId || undefined}
             />
         </div>
       </div>

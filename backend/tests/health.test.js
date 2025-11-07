@@ -1,4 +1,5 @@
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-key';
+process.env.NODE_ENV = 'test';
 
 const mockRedisClient = {
     ping: jest.fn(),
@@ -25,7 +26,7 @@ jest.mock('../services/eventBus', () => ({ emit: jest.fn(), on: jest.fn() }));
 const request = require('supertest');
 const redisClient = require('../services/redisClient');
 const weaviate = require('../services/weaviateClient');
-const server = require('../server');
+const { app } = require('../server');
 
 describe('GET /api/health', () => {
     let originalApiKey;
@@ -36,7 +37,6 @@ describe('GET /api/health', () => {
 
     afterAll(() => {
         process.env.GEMINI_API_KEY = originalApiKey;
-        server.close(); // Fecha o servidor após todos os testes
     });
 
     beforeEach(() => {
@@ -53,7 +53,7 @@ describe('GET /api/health', () => {
         redisClient.ping.mockResolvedValue('PONG');
         weaviate.__liveCheckerResult.do.mockResolvedValue(true);
 
-        const response = await request(server).get('/api/health');
+        const response = await request(app).get('/api/health');
 
         expect(response.status).toBe(200);
         expect(response.body.status).toBe('ok');
@@ -67,7 +67,7 @@ describe('GET /api/health', () => {
         redisClient.ping.mockRejectedValue(redisError);
         weaviate.__liveCheckerResult.do.mockResolvedValue(true);
 
-        const response = await request(server).get('/api/health');
+        const response = await request(app).get('/api/health');
 
         expect(response.status).toBe(503);
         expect(response.body.status).toBe('error');
@@ -80,7 +80,7 @@ describe('GET /api/health', () => {
         redisClient.ping.mockResolvedValue('PONG');
         weaviate.__liveCheckerResult.do.mockRejectedValue(weaviateError);
 
-        const response = await request(server).get('/api/health');
+        const response = await request(app).get('/api/health');
 
         expect(response.status).toBe(503);
         expect(response.body.status).toBe('error');
@@ -93,7 +93,7 @@ describe('GET /api/health', () => {
         redisClient.ping.mockResolvedValue('PONG');
         weaviate.__liveCheckerResult.do.mockResolvedValue(true);
 
-        const response = await request(server).get('/api/health');
+        const response = await request(app).get('/api/health');
 
         expect(response.status).toBe(503);
         expect(response.body.status).toBe('error');

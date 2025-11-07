@@ -2,6 +2,7 @@
 import { xml2json } from 'xml-js';
 import { DocumentoFiscalDetalhado } from '../types';
 import { validarDocumentoCompleto } from './rulesValidator.ts';
+import { buildBackendHttpUrl } from '../config.ts';
 
 // Helper to simplify JSON from XML
 const simplifyJson = (obj: any): any => {
@@ -172,3 +173,38 @@ export const downloadFile = (fileName: string, content: string) => {
         document.body.removeChild(link);
     }
 };
+
+const decodeBase64ToText = (input: string): string => {
+    if (!input) return '';
+    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+        return window.atob(input);
+    }
+    if (typeof globalThis !== 'undefined' && typeof (globalThis as any).Buffer !== 'undefined') {
+        return (globalThis as any).Buffer.from(input, 'base64').toString('utf8');
+    }
+    return input;
+};
+
+export async function exportarFiscalViaBackend(
+    jobId: string,
+    format: 'sped' | 'efd' | 'csv' | 'lancamentos'
+): Promise<{ fileName: string; content: string; log: string[]; documents?: any[] }> {
+    const response = await fetch(buildBackendHttpUrl(`/api/jobs/${jobId}/exports`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Falha ao gerar exportação no backend.');
+    }
+
+    const payload = await response.json();
+    return {
+        fileName: payload.fileName || `export-${format}.txt`,
+        content: decodeBase64ToText(payload.content || ''),
+        log: payload.log || [],
+        documents: payload.documents || [],
+    };
+}

@@ -46,7 +46,25 @@ const upload = multer({
 });
 
 // --- Configuração de Segurança e Middlewares ---
-app.use(cors()); // Em produção, restrinja para o domínio do seu frontend
+// Configuração de CORS para ser mais flexível em desenvolvimento (ex: GitHub Codespaces)
+const allowedOrigins = [
+  'http://localhost:8000', // Frontend local
+];
+
+// Adiciona a URL do Codespace dinamicamente, se existir
+if (process.env.CODESPACES === 'true') {
+    const codespaceName = process.env.CODESPACE_NAME;
+    if (codespaceName) {
+        allowedOrigins.push(`https://${codespaceName}-8000.app.github.dev`);
+    }
+}
+
+const corsOptions = {
+  origin: allowedOrigins,
+  credentials: true, // Permite que o navegador envie cookies e cabeçalhos de autorização
+};
+
+app.use(cors(corsOptions)); // Aplica a configuração de CORS
 
 app.use((req, res, next) => {
     const start = process.hrtime.bigint();
@@ -303,5 +321,5 @@ if (process.env.NODE_ENV !== 'test') {
     });
 }
 
-// Exporta o servidor para ser usado nos testes de integração
-module.exports = server;
+// Exporta o servidor e o app para serem usados nos testes de integração
+module.exports = { app, server };

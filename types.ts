@@ -159,3 +159,37 @@ export interface ForecastResult {
     };
     historicoMensal: { [month: string]: MonthlyData };
 }
+
+export interface ReconciliationInvoice {
+    chave?: string;
+    numero?: string;
+    valor: number;
+    emitente?: string;
+    destino?: string;
+}
+
+export interface ReconciliationTransaction {
+    date: string;
+    description: string;
+    amount: number;
+}
+
+export interface ReconciliationSummary {
+    totalInvoices: number;
+    totalTransactions: number;
+    reconciled: number;
+    pendingInvoices: number;
+    pendingTransactions: number;
+}
+
+export interface ReconciliationMatch {
+    invoice: ReconciliationInvoice;
+    transaction: ReconciliationTransaction;
+}
+
+export interface ReconciliationResult {
+    summary: ReconciliationSummary;
+    matches: ReconciliationMatch[];
+    pendingInvoices: ReconciliationInvoice[];
+    pendingTransactions: ReconciliationTransaction[];
+}

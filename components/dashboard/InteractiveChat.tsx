@@ -5,8 +5,10 @@ import { ChatChart } from './ChatChart.tsx';
 import { useErrorLog } from '../../hooks/useErrorLog.ts';
 import { PaperclipIcon } from '../icons/PaperclipIcon.tsx';
 import { XCircleIcon } from '../icons/XCircleIcon.tsx';
-import { getChatResponse, generateChartConfigFromData } from '../../services/chatService.ts';
+import { getAnswerFromBackend, getChatResponse, generateChartConfigFromData } from '../../services/chatService.ts';
 import { storeFeedback } from '../../services/contextMemory.ts';
+
+const ATTACHMENT_DEFAULT_PROMPT = 'Analise os arquivos anexados e traga os principais insights e alertas tributários relacionados.';
 
 const SendIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -31,7 +33,8 @@ export const InteractiveChat: React.FC<{
   report: GeneratedReport;
   simulationResult: SimulationResult | null;
   processedFiles: File[];
-}> = ({ report, simulationResult, processedFiles }) => {
+  jobId?: string;
+}> = ({ report, simulationResult, processedFiles, jobId }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -93,12 +96,18 @@ export const InteractiveChat: React.FC<{
     setIsTyping(true);
 
     try {
+      const trimmedQuestion = currentInput.trim();
+      const normalizedQuestion = trimmedQuestion || (currentFiles.length > 0 ? ATTACHMENT_DEFAULT_PROMPT : '');
       const chartKeywords = ['gráfico', 'visualização', 'tendência', 'distribuição', 'mostre', 'exiba', 'compare', 'evolução'];
-      const isChartRequest = chartKeywords.some(kw => currentInput.toLowerCase().includes(kw));
+      const isChartRequest = chartKeywords.some(kw => normalizedQuestion.toLowerCase().includes(kw));
+
+      if (!normalizedQuestion) {
+        throw new Error('Informe uma pergunta para continuar.');
+      }
 
       if (isChartRequest) {
         setMessages(prev => [...prev, { sender: 'ai', content: 'Analisando dados para gerar uma visualização...' }]);
-        const chartConfig = await generateChartConfigFromData(currentInput, report, logError);
+        const chartConfig = await generateChartConfigFromData(trimmedQuestion, report, logError);
         
         setMessages(prev => prev.slice(0, prev.length - 1));
 
@@ -117,12 +126,18 @@ export const InteractiveChat: React.FC<{
             setMessages(prev => [...prev, fallbackMessage]);
         }
       } else {
-        const responseText = await getChatResponse(
-            currentInput,
-            processedFiles,
-            currentFiles, // Newly attached files
-            logError
-        );
+        let responseText: string;
+
+        if (jobId) {
+            responseText = await getAnswerFromBackend(jobId, normalizedQuestion, logError, currentFiles);
+        } else {
+            responseText = await getChatResponse(
+                normalizedQuestion,
+                processedFiles,
+                currentFiles,
+                logError
+            );
+        }
         
         const aiResponse: ChatMessage = { sender: 'ai', content: responseText };
         setMessages(prev => [...prev, aiResponse]);
