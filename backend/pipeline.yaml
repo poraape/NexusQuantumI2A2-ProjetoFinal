@@ -10,11 +10,11 @@ extraction:
 
 validation:
   next: audit
-  stepIndex: 1 # This will now map to the "Ag. Auditor" step in the UI
+  stepIndex: 1
 
 audit:
   next: classification
-  stepIndex: 1
+  stepIndex: 2
 
 classification:
   next: analysis

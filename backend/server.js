@@ -113,9 +113,14 @@ wss.on('connection', (ws, req) => {
     redisClient.get(`job:${jobId}`).then(jobString => { // Busca o estado inicial do job
         if (jobString && ws.readyState === ws.OPEN) {
             ws.send(jobString);
+        } else if (!jobString && ws.readyState === ws.OPEN) {
+            // Se o job não for encontrado, informa o cliente.
+            ws.send(JSON.stringify({ error: `Job com ID ${jobId} não encontrado.` }));
         }
     }).catch(err => {
         logger.error(`[BFF-WS] Erro ao buscar job ${jobId} do Redis:`, { error: err });
+        // Informa o cliente sobre a falha interna.
+        ws.send(JSON.stringify({ error: 'Ocorreu um erro interno ao buscar os dados do job.' }));
     });
 
     ws.on('close', () => {
@@ -187,13 +192,6 @@ async function updateJobStatus(jobId, stepIndex, status, info) {
 
     job.pipeline[stepIndex].status = status;
     if (info) job.pipeline[stepIndex].info = info;
-
-    // Marca passos anteriores como concluídos
-    for (let i = 0; i < stepIndex; i++) {
-        if (job.pipeline[i].status !== 'failed') {
-            job.pipeline[i].status = 'completed'; // Garante que a UI mostre o progresso linear
-        }
-    }
 
     // Salva o estado atualizado de volta no Redis
     await redisClient.set(`job:${jobId}`, JSON.stringify(job));
