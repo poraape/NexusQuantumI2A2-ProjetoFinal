@@ -94,7 +94,7 @@ if (!geminiApiKey && !isTestEnv) {
 const jobConnections = new Map(); // Mapeia jobId -> WebSocket
 const jobTimers = new Map();
 
-const PERSISTABLE_RESULT_KEYS = ['executiveSummary', 'simulationResult', 'validations', 'fiscalChecks', 'auditFindings', 'classifications'];
+const PERSISTABLE_RESULT_KEYS = ['executiveSummary', 'simulationResult', 'validations'];
 
 function pickPersistableResult(resultPayload) {
     if (!resultPayload || typeof resultPayload !== 'object') return null;
@@ -188,16 +188,22 @@ wss.on('connection', (ws, req) => {
     metrics.incrementCounter('ws_connections_total');
     metrics.setGauge('ws_connections_active', jobConnections.size);
 
+    // Mantém a conexão viva e detecta clientes inativos
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
     // Busca o estado atual do job no Redis e envia ao cliente
     redisClient.get(`job:${jobId}`).then(jobString => { // Busca o estado inicial do job
         if (jobString && ws.readyState === ws.OPEN) {
             ws.send(jobString);
-        } else if (!jobString && ws.readyState === ws.OPEN) {
-            // Se o job não for encontrado, informa o cliente.
-            ws.send(JSON.stringify({ error: `Job com ID ${jobId} não encontrado.` }));
+        } else if (!jobString) {
+            logger.warn(`[BFF-WS] Tentativa de conexão para job inexistente: ${jobId}`);
+            if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify({ jobId, status: 'not_found', error: `Job com ID ${jobId} não encontrado.` }));
+            }
         }
     }).catch(err => {
-        logger.error(`[BFF-WS] Erro ao buscar job ${jobId} do Redis:`, { error: err });
+        logger.error(`[BFF-WS] Erro ao buscar job ${jobId} do Redis para conexão inicial.`, { error: err });
         // Informa o cliente sobre a falha interna.
         ws.send(JSON.stringify({ error: 'Ocorreu um erro interno ao buscar os dados do job.' }));
     });
@@ -207,11 +213,27 @@ wss.on('connection', (ws, req) => {
       jobConnections.delete(jobId);
       metrics.setGauge('ws_connections_active', jobConnections.size);
     });
+
+    ws.on('error', (error) => {
+        logger.error(`[BFF-WS] Erro na conexão do job ${jobId}:`, { error });
+    });
   } else {
     logger.warn(`[BFF-WS] Conexão rejeitada: jobId inválido ou não encontrado.`);
     ws.close();
   }
 });
+
+// Intervalo para verificar e fechar conexões inativas
+const wsHealthCheckInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            logger.warn('[BFF-WS] Fechando conexão inativa.');
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping(() => {});
+    });
+}, 30000); // 30 segundos
 
 eventBus.on('task:completed', async ({ jobId, taskName, resultPayload, payload }) => {
     try {
@@ -328,17 +350,25 @@ async function updateJobStatus(jobId, stepIndex, status, info) {
 function gracefulShutdown(signal) {
     logger.info(`[Server] Sinal de desligamento recebido: ${signal}. Fechando conexões...`);
     
-    // 1. Para de aceitar novas conexões HTTP
+    // 1. Para de aceitar novas conexões HTTP e notifica clientes WebSocket
     server.close(() => {
+        clearInterval(wsHealthCheckInterval); // Limpa o intervalo de health check do WS
         logger.info('[Server] Servidor HTTP fechado.');
 
-        // 2. Fecha a conexão com o Redis
+        // 3. Fecha a conexão com o Redis
         redisClient.quit(() => {
             logger.info('[Redis] Conexão com o Redis fechada.');
-            // 3. Fecha outras conexões (ex: Weaviate, se houver método)
+            // 4. Fecha outras conexões (ex: Weaviate, se houver método)
             // weaviate.close(); 
             process.exit(0); // Encerra o processo com sucesso
         });
+    });
+
+    // 2. Fecha todas as conexões WebSocket ativas
+    wss.clients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.close(1012, 'O servidor está sendo reiniciado.'); // 1012 = Service Restart
+        }
     });
 
     // Força o desligamento após um timeout, caso algo trave

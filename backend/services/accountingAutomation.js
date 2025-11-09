@@ -1,38 +1,20 @@
 // backend/services/accountingAutomation.js
+const { ACCOUNTING } = require('./fiscalRulesService');
+
 /**
  * Utilidades para gerar lançamentos contábeis automáticos a partir
  * dos documentos fiscais já validados no pipeline.
  */
 
-function inferAccounts(cfop = '', role = 'emit') {
-    if (!cfop) return { debit: 'Ajuste Manual', credit: 'Ajuste Manual' };
-    const prefix = cfop.charAt(0);
-
-    if (['5', '6', '7'].includes(prefix)) {
-        return {
-            debit: role === 'emit' ? 'Clientes a Receber' : 'Duplicatas a Pagar',
-            credit: 'Receita de Vendas/Serviços',
-        };
-    }
-    if (['1', '2', '3'].includes(prefix)) {
-        return {
-            debit: 'Estoque de Mercadorias',
-            credit: role === 'emit' ? 'Clientes a Receber' : 'Fornecedores a Pagar',
-        };
-    }
-    return {
-        debit: 'Despesas/Custos Diversos',
-        credit: 'Caixa/Bancos',
-    };
-}
-
 function suggestAccountingEntries(documents = []) {
     const entries = [];
+    const { CHART_OF_ACCOUNTS, inferAccountsFromCfop } = ACCOUNTING;
 
     documents.forEach((doc) => {
         const cfop = doc?.itens?.[0]?.cfop;
         const totalInvoice = Number(doc?.total?.vNF || 0);
-        const { debit, credit } = inferAccounts(cfop, 'emit');
+        // A lógica de inferência agora é chamada do serviço centralizado
+        const { debit, credit } = inferAccountsFromCfop.call(ACCOUNTING, cfop);
 
         entries.push({
             data: doc?.ide?.dhEmi,
@@ -44,14 +26,15 @@ function suggestAccountingEntries(documents = []) {
             historico: `Lançamento automático da NF-e ${doc?.chave}`,
         });
 
+        // Utiliza o plano de contas centralizado para os impostos
         const valorICMS = Number(doc?.total?.vICMS || 0);
         if (valorICMS > 0) {
             entries.push({
                 data: doc?.ide?.dhEmi,
                 descricao: `ICMS NF-e ${doc?.ide?.nNF}`,
                 cfop,
-                conta_debito: 'ICMS a Recolher',
-                conta_credito: 'ICMS sobre Vendas',
+                conta_debito: CHART_OF_ACCOUNTS.TAXES_ICMS,
+                conta_credito: 'ICMS sobre Vendas', // Exemplo, poderia ser outra conta
                 valor: Number(valorICMS.toFixed(2)),
                 historico: `Ajuste de ICMS para a NF-e ${doc?.chave}`,
             });
@@ -62,7 +45,7 @@ function suggestAccountingEntries(documents = []) {
 }
 
 function entriesToCsv(data = []) {
-    if (!data.length) return '';
+    if (!data || !data.length) return '';
     const headers = Object.keys(data[0]);
     const rows = data.map((row) =>
         headers

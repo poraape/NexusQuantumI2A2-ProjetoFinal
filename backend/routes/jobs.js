@@ -43,6 +43,11 @@ const buildChatCacheKey = (jobId, question) => {
     return `job:${jobId}:chat:${hash}`;
 };
 
+function addSection(lines, title, content) {
+    if (content && String(content).trim()) {
+        lines.push(`${title}\n${content}`);
+    }
+}
 function buildJobStructuredContext(job = {}) {
     const payload = job.result || {};
     const lines = [];
@@ -51,78 +56,60 @@ function buildJobStructuredContext(job = {}) {
         const { title, description, keyMetrics, actionableInsights } = payload.executiveSummary;
         if (title) lines.push(`Título do relatório: ${title}`);
         if (description) lines.push(`Resumo executivo: ${description}`);
+
         if (keyMetrics) {
             const metricsLines = Object.entries(keyMetrics)
                 .map(([key, value]) => `${key}: ${typeof value === 'number' ? value.toLocaleString('pt-BR') : value}`)
                 .join('\n');
-            lines.push(`Métricas principais:\n${metricsLines}`);
+            addSection(lines, 'Métricas principais:', metricsLines);
         }
         if (Array.isArray(actionableInsights) && actionableInsights.length > 0) {
             const insights = actionableInsights
                 .map((item, index) => `${index + 1}. ${item?.text || item}`)
                 .join('\n');
-            lines.push(`Recomendações prioritárias:\n${insights}`);
+            addSection(lines, 'Recomendações prioritárias:', insights);
         }
     }
 
-    if (payload.simulationResult?.resumoExecutivo) {
-        lines.push(`Resumo da simulação tributária: ${payload.simulationResult.resumoExecutivo}`);
-    }
+    addSection(lines, 'Resumo da simulação tributária:', payload.simulationResult?.resumoExecutivo);
 
     if (Array.isArray(payload.validations) && payload.validations.length > 0) {
-        const okItems = payload.validations
-            .filter(item => !item?.error)
-            .slice(0, 3)
-            .map(item => `${item.nome_fantasia || item.razao_social || 'Empresa'} (${item.cnpj})`);
-        const erroItems = payload.validations
-            .filter(item => item?.error)
-            .slice(0, 3)
-            .map(item => `${item.cnpj}: ${item.message || 'erro na validação'}`);
-        if (okItems.length) lines.push(`CNPJs validados: ${okItems.join('; ')}`);
-        if (erroItems.length) lines.push(`Alertas de validação: ${erroItems.join('; ')}`);
+        const okItems = payload.validations.filter(item => !item?.error).slice(0, 3).map(item => `${item.nome_fantasia || item.razao_social || 'Empresa'} (${item.cnpj})`).join('; ');
+        const erroItems = payload.validations.filter(item => item?.error).slice(0, 3).map(item => `${item.cnpj}: ${item.message || 'erro na validação'}`).join('; ');
+        addSection(lines, 'CNPJs validados:', okItems);
+        addSection(lines, 'Alertas de validação:', erroItems);
     }
 
     if (payload.fiscalChecks?.summary) {
         const { flaggedDocuments, icmsInconsistent, missingCfop, missingCst } = payload.fiscalChecks.summary;
         const fiscalLines = [];
-        if (flaggedDocuments > 0) {
-            fiscalLines.push(`${flaggedDocuments} documento(s) com anotações fiscais.`);
-        }
-        if (icmsInconsistent > 0) {
-            fiscalLines.push(`${icmsInconsistent} divergência(s) de ICMS.`);
-        }
-        if (missingCfop > 0 || missingCst > 0) {
-            fiscalLines.push(`Campos ausentes: CFOP=${missingCfop}, CST=${missingCst}.`);
-        }
-        if (fiscalLines.length > 0) {
-            lines.push(`Resumo de validação fiscal:
-${fiscalLines.join(' ')}`);
-        }
+        if (flaggedDocuments > 0) fiscalLines.push(`${flaggedDocuments} documento(s) com anotações fiscais.`);
+        if (icmsInconsistent > 0) fiscalLines.push(`${icmsInconsistent} divergência(s) de ICMS.`);
+        if (missingCfop > 0 || missingCst > 0) fiscalLines.push(`Campos ausentes: CFOP=${missingCfop}, CST=${missingCst}.`);
+        addSection(lines, 'Resumo de validação fiscal:', fiscalLines.join(' '));
     }
 
     if (payload.auditFindings?.summary) {
         const { riskLevel, riskScore, totalFindings, highValueDocuments } = payload.auditFindings.summary;
-        lines.push(`Resumo da auditoria: ${totalFindings} alerta(s), risco ${riskLevel} (score ${riskScore}).`);
-        if (typeof highValueDocuments === 'number' && highValueDocuments > 0) {
-            lines.push(`Documentos de alto valor revisados: ${highValueDocuments}.`);
-        }
+        const summaryLine = `Total de ${totalFindings} alerta(s), risco ${riskLevel} (score ${riskScore}).`;
+        const highValueLine = (typeof highValueDocuments === 'number' && highValueDocuments > 0) ? `Documentos de alto valor revisados: ${highValueDocuments}.` : '';
+        addSection(lines, 'Resumo da auditoria:', [summaryLine, highValueLine].filter(Boolean).join(' '));
+
         if (Array.isArray(payload.auditFindings.alerts) && payload.auditFindings.alerts.length > 0) {
-            const topAlerts = payload.auditFindings.alerts
-                .slice(0, 3)
-                .map((alert, index) => `${index + 1}. ${alert}`)
-                .join('\n');
-            lines.push(`Principais alertas:
-${topAlerts}`);
+            const topAlerts = payload.auditFindings.alerts.slice(0, 3).map((alert, index) => `${index + 1}. ${alert}`).join('\n');
+            addSection(lines, 'Principais alertas:', topAlerts);
         }
     }
 
     if (payload.classifications?.summary) {
         const { porRisco, documentsWithPendingIssues } = payload.classifications.summary;
-        lines.push(`Classificação fiscal: risco alto em ${porRisco?.Alto || 0} documento(s), pendências em ${documentsWithPendingIssues}.`);
+        const classificationSummary = `Risco alto em ${porRisco?.Alto || 0} documento(s), pendências em ${documentsWithPendingIssues}.`;
+        addSection(lines, 'Classificação fiscal:', classificationSummary);
+
         const recs = payload.classifications.summary.recommendations || [];
         if (recs.length > 0) {
-            lines.push(`Recomendações da classificação:
-${recs.slice(0, 3).map((r, idx) => `${idx + 1}. ${r}`).join('\n')}`);
+            const topRecs = recs.slice(0, 3).map((r, idx) => `${idx + 1}. ${r}`).join('\n');
+            addSection(lines, 'Recomendações da classificação:', topRecs);
         }
     }
 
@@ -130,7 +117,7 @@ ${recs.slice(0, 3).map((r, idx) => `${idx + 1}. ${r}`).join('\n')}`);
         const fileLines = job.uploadedFiles
             .slice(0, 5)
             .map(file => `- ${file.name || file.originalName} (${formatBytes(file.size)})`);
-        lines.push(`Arquivos processados:\n${fileLines.join('\n')}`);
+        addSection(lines, 'Arquivos processados:', fileLines.join('\n'));
     }
 
     return lines.join('\n\n');
@@ -270,17 +257,16 @@ module.exports = (context) => {
         const { jobId } = req.params;
         const attachments = Array.isArray(req.files) ? req.files : [];
         const rawQuestion = typeof req.body?.question === 'string' ? req.body.question : '';
-        const trimmedQuestion = rawQuestion.trim();
-        const finalQuestion = trimmedQuestion || (attachments.length > 0 ? DEFAULT_ATTACHMENTS_QUESTION : '');
-        const skipCache = attachments.length > 0;
+        const question = rawQuestion.trim() || (attachments.length > 0 ? DEFAULT_ATTACHMENTS_QUESTION : '');
+        const useCache = attachments.length === 0 && !!question;
 
-        if (!finalQuestion) {
+        if (!question) {
             return res.status(400).json({ message: 'É necessário informar uma pergunta ou anexar arquivos.' });
         }
 
         let cacheKey;
-        if (!skipCache) {
-            cacheKey = buildChatCacheKey(jobId, finalQuestion);
+        if (useCache) {
+            cacheKey = buildChatCacheKey(jobId, question);
             const cachedAnswer = await redisClient.get(cacheKey);
             if (cachedAnswer) {
                 return res.status(200).json({ answer: cachedAnswer });
@@ -313,8 +299,12 @@ module.exports = (context) => {
                     return true;
                 });
 
-                if (uniqueAttachments.length !== storedAttachments.length) {
-                    logger?.info?.(`[Chat-RAG] Job ${jobId}: ${storedAttachments.length - uniqueAttachments.length} anexos duplicados ignorados.`);
+                const duplicatesCount = storedAttachments.length - uniqueAttachments.length;
+                if (duplicatesCount > 0) {
+                    logger?.info?.(`[Chat-RAG] Job ${jobId}: ${duplicatesCount} anexo(s) duplicado(s) ignorado(s) com base no hash do conteúdo.`);
+                }
+                if (uniqueAttachments.length === 0) {
+                    logger?.warn?.(`[Chat-RAG] Job ${jobId}: Nenhum anexo único foi processado após a deduplicação.`);
                 }
 
                 try {
@@ -330,7 +320,7 @@ module.exports = (context) => {
 
             const contextBlocks = [];
             try {
-                const embeddingResult = await embeddingModel.embedContent(finalQuestion);
+                const embeddingResult = await embeddingModel.embedContent(question);
                 const vector = embeddingResult?.embedding?.values || [];
 
                 if (Array.isArray(vector) && vector.length > 0) {
@@ -353,6 +343,7 @@ module.exports = (context) => {
                 }
             } catch (error) {
                 logger?.warn?.(`[Chat-RAG] Job ${jobId}: falha ao consultar o índice cognitivo.`, { error });
+                // Não retorna erro ao usuário, prossegue sem o contexto RAG.
             }
 
             const structuredContext = buildJobStructuredContext(job);
@@ -365,18 +356,18 @@ module.exports = (context) => {
                 contextBlocks.push(`### Conteúdo dos anexos recentes\n${attachmentContext}`);
             }
 
-            if (contextBlocks.length === 0) {
-                contextBlocks.push('Nenhum contexto adicional foi recuperado. Responda apenas com base na pergunta e informe limitações claramente.');
-            }
+            const knowledgeSource = contextBlocks.length > 0
+                ? contextBlocks.join('\n\n---\n\n')
+                : 'Nenhum contexto adicional foi recuperado. Responda apenas com base em seu conhecimento geral, informando claramente essa limitação.';
 
             const prompt = `
 Você é um especialista fiscal que atua como copiloto dos agentes internos. Use somente as informações recuperadas, mantendo confidencialidade e clareza.
 
 FONTE DE CONHECIMENTO:
-${contextBlocks.join('\n\n---\n\n')}
+${knowledgeSource}
 
 PERGUNTA DO USUÁRIO:
-${finalQuestion}
+${question}
 
 Responda em português, com precisão factual. Se precisar usar ferramentas (ex.: tax_simulation), solicite-as. Se os dados forem insuficientes, explique o que falta e sugira próximos passos.`.trim();
 
@@ -401,14 +392,19 @@ Responda em português, com precisão factual. Se precisar usar ferramentas (ex.
                 answer = result.response.text();
             }
 
-            if (!skipCache && cacheKey && answer) {
+            if (useCache && cacheKey && answer) {
                 await redisClient.set(cacheKey, answer, { EX: CHAT_CACHE_TTL_SECONDS }).catch(() => {});
             }
 
             res.status(200).json({ answer });
         } catch (error) {
             logger?.error?.(`[Chat-RAG] Erro no job ${jobId}:`, { error });
-            res.status(500).json({ message: 'Falha ao processar a pergunta.', details: error.message });
+            // Fornece uma mensagem de erro mais genérica para o cliente por segurança,
+            // mas mantém os detalhes no log do servidor.
+            const userMessage = error.message.includes('fetch') || error.message.includes('ECONNREFUSED')
+                ? 'Falha de comunicação com um serviço externo. Tente novamente mais tarde.'
+                : 'Falha interna ao processar a pergunta.';
+            res.status(500).json({ message: userMessage });
         }
     });
 

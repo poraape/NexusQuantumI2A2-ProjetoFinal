@@ -58,4 +58,36 @@ async function cnpj_validation({ cnpj }) {
     return result;
 }
 
-module.exports = { tax_simulation, cnpj_validation };
+/**
+ * Simulates a RAG query to a vector database of fiscal legislation.
+ * @param {object} params
+ * @param {string} params.query The fiscal topic to consult.
+ * @returns {Promise<object>} The retrieved legal information.
+ */
+async function consult_fiscal_legislation({ query }) {
+    console.log(`[ToolsAgent] Executing consult_fiscal_legislation for query: "${query}"`);
+    
+    // In a real system, this would perform a vector search.
+    // Here, we return a hardcoded, relevant-sounding text block.
+    const knowledgeBase = {
+        "crédito presumido": "O Art. 15, § 2º da Lei Complementar 87/96 (Lei Kandir) estabelece que o crédito presumido de ICMS é um benefício fiscal que substitui o sistema normal de creditamento, sendo opcional ao contribuinte e dependente de regulamentação estadual.",
+        "diferencial de alíquota": "O Diferencial de Alíquotas (DIFAL), previsto na Emenda Constitucional 87/2015, aplica-se a operações interestaduais destinadas a consumidor final não contribuinte do ICMS. A responsabilidade pelo recolhimento é do remetente.",
+        "substituição tributária": "A Substituição Tributária (ST) do ICMS, conforme Art. 150, § 7º da CF/88, atribui a um contribuinte da cadeia (o substituto) a responsabilidade pelo recolhimento do imposto devido pelos demais (os substituídos).",
+    };
+
+    const lowerQuery = query.toLowerCase();
+    const foundKey = Object.keys(knowledgeBase).find(key => lowerQuery.includes(key));
+    
+    const resultText = foundKey 
+        ? knowledgeBase[foundKey]
+        : "Nenhuma informação encontrada na base de conhecimento para a consulta especificada. Tente termos como 'crédito presumido', 'diferencial de alíquota' ou 'substituição tributária'.";
+
+    return {
+        success: true,
+        source: "Base de Conhecimento Fiscal (Simulada)",
+        retrieved_text: resultText,
+    };
+}
+
+
+module.exports = { tax_simulation, cnpj_validation, consult_fiscal_legislation };

@@ -232,8 +232,7 @@ O projeto é distribuído sob a **MIT License** (`LICENSE`). Qualquer contribui�
 ---
 
 ## 11. Estado atual e riscos conhecidos
-
-- `processFilesInBackground` é referenciado em `backend/server.js`/`backend/routes/jobs.js`, mas não possui implementação visível neste commit. O pipeline descrito acima corresponde ao comportamento esperado; implemente ou corrija essa função antes de produção.
+- **Segurança de Armazenamento:** A pasta `.uploads/` guarda arquivos sensíveis. Em um ambiente de produção, é crucial garantir o isolamento de disco e políticas de retenção adequadas. A criptografia em repouso pode ser ativada via variáveis de ambiente.
 - A pasta `.uploads/` guarda arquivos sensíveis sem criptografia. Garanta isolamento de disco e políticas de retenção ao rodar em produção.
 - Testes que dependem de sockets podem falhar em ambientes restritos (e.g., Codespaces) por bloqueio de portas; utilize runners locais/CI.
 

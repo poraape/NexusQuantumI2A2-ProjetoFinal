@@ -12,7 +12,7 @@ services:
   weaviate:
     image: cr.weaviate.io/semitechnologies/weaviate:1.24.1
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./weaviate_data:/var/lib/weaviate
     environment:

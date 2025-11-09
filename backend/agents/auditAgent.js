@@ -1,6 +1,6 @@
 // backend/agents/auditAgent.js
 
-const HIGH_VALUE_THRESHOLD = parseFloat(process.env.AUDIT_HIGH_VALUE_THRESHOLD || '100000');
+const { RISK_THRESHOLDS } = require('../services/fiscalRulesService');
 
 function normalizeCnpj(value) {
     if (!value) return null;
@@ -122,11 +122,11 @@ function analyzeArtifacts(artifacts = [], validationSummary) {
             documentsWithUnvalidatedCnpj += 1;
         }
 
-        if (estimatedTotal !== null && estimatedTotal >= HIGH_VALUE_THRESHOLD && !hasIcms) {
+        if (estimatedTotal !== null && estimatedTotal >= RISK_THRESHOLDS.HIGH_VALUE_DOCUMENT && !hasIcms) {
             findings.push('Documento de alto valor sem menção a ICMS.');
         }
 
-        if (estimatedTotal !== null && estimatedTotal >= HIGH_VALUE_THRESHOLD) {
+        if (estimatedTotal !== null && estimatedTotal >= RISK_THRESHOLDS.HIGH_VALUE_DOCUMENT) {
             highValueDocuments += 1;
         }
 
@@ -240,7 +240,7 @@ function register({ eventBus, updateJobStatus, logger }) {
                 alerts.push(`Foram detectadas ${artifactSummary.icmsWithoutCfop} nota(s) com ICMS sem CFOP correspondente.`);
             }
             if (artifactSummary.highValueDocuments > 0) {
-                alerts.push(`${artifactSummary.highValueDocuments} documento(s) com valores acima de R$ ${HIGH_VALUE_THRESHOLD.toLocaleString('pt-BR')} exigem atenção adicional.`);
+                alerts.push(`${artifactSummary.highValueDocuments} documento(s) com valores acima de R$ ${RISK_THRESHOLDS.HIGH_VALUE_DOCUMENT.toLocaleString('pt-BR')} exigem atenção adicional.`);
             }
 
             const auditFindings = {

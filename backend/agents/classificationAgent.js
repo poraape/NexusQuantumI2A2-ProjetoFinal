@@ -1,49 +1,28 @@
 // backend/agents/classificationAgent.js
 
-const HIGH_VALUE_THRESHOLD = parseFloat(process.env.AUDIT_HIGH_VALUE_THRESHOLD || '100000');
-
-const OPERATION_TYPES = ['compra', 'venda', 'serviço', 'desconhecido'];
-const SECTORS = ['agronegócio', 'indústria', 'varejo', 'transporte', 'outros'];
-const RISK_LEVELS = ['Baixo', 'Médio', 'Alto'];
+const { CLASSIFICATION, RISK_THRESHOLDS } = require('../services/fiscalRulesService');
 
 function ensureArray(value) {
     return Array.isArray(value) ? value : [];
 }
 
-function inferOperationFromCfop(cfops = []) {
-    if (!cfops.length) return null;
-    if (cfops.some(code => /^5|^6/.test(code))) return 'venda';
-    if (cfops.some(code => /^1|^2/.test(code))) return 'compra';
-    if (cfops.some(code => /^3|^7/.test(code))) return 'serviço';
-    return null;
-}
-
-function inferOperationFromText(text = '') {
+// Fallback function for text-based inference if primary methods fail
+function inferFromText(text = '', type) {
     const lower = text.toLowerCase();
-    if (/prestação\s+de\s+serviço|servi[cç]o/.test(lower)) return 'serviço';
-    if (/venda|sa[ií]da/.test(lower)) return 'venda';
-    if (/compra|entrada/.test(lower)) return 'compra';
-    return null;
-}
-
-function inferSectorFromNcm(ncms = []) {
-    for (const code of ncms) {
-        if (/^(0[1-3])/.test(code)) return 'agronegócio';
-        if (/^(84|85|86)/.test(code)) return 'indústria';
-        if (/^(87|88|89|90)/.test(code)) return 'transporte';
-        if (/^(39|48|49|64)/.test(code)) return 'varejo';
+    if (type === 'operation') {
+        if (/prestação\s+de\s+serviço|servi[cç]o/.test(lower)) return 'serviço';
+        if (/venda|sa[ií]da/.test(lower)) return 'venda';
+        if (/compra|entrada/.test(lower)) return 'compra';
+    }
+    if (type === 'sector') {
+        if (/fazenda|agro|safra|gr[aã]o/.test(lower)) return 'agronegócio';
+        if (/f[aá]brica|industrial|produção/.test(lower)) return 'indústria';
+        if (/loja|varejo|atacado/.test(lower)) return 'varejo';
+        if (/transporte|log[ií]stica|frete/.test(lower)) return 'transporte';
     }
     return null;
 }
 
-function inferSectorFromText(text = '') {
-    const lower = text.toLowerCase();
-    if (/fazenda|agro|safra|gr[aã]o/.test(lower)) return 'agronegócio';
-    if (/f[aá]brica|industrial|produção/.test(lower)) return 'indústria';
-    if (/loja|varejo|atacado/.test(lower)) return 'varejo';
-    if (/transporte|log[ií]stica|frete/.test(lower)) return 'transporte';
-    return null;
-}
 
 function normaliseNcms(text = '') {
     const matches = text.match(/NCM[\s:=-]*([0-9]{4,8})/gi) || [];
@@ -84,7 +63,7 @@ function calculateRisk({ auditDoc, fiscalDoc }) {
             score += missing * 2;
             drivers.push(`${missing} campo(s) fiscal(is) ausente(s)`);
         }
-        if (auditDoc.estimatedTotal && auditDoc.estimatedTotal >= HIGH_VALUE_THRESHOLD) {
+        if (auditDoc.estimatedTotal && auditDoc.estimatedTotal >= RISK_THRESHOLDS.HIGH_VALUE_DOCUMENT) {
             score += 3;
             drivers.push('Documento de alto valor');
         }
@@ -125,9 +104,15 @@ function buildSummary(documents) {
     };
 
     documents.forEach(doc => {
-        summary.porTipoOperacao[doc.tipoOperacao] += 1;
-        summary.porSetor[doc.setor] += 1;
-        summary.porRisco[doc.riskLevel] += 1;
+        if (summary.porTipoOperacao.hasOwnProperty(doc.tipoOperacao)) {
+            summary.porTipoOperacao[doc.tipoOperacao] += 1;
+        }
+        if (summary.porSetor.hasOwnProperty(doc.setor)) {
+            summary.porSetor[doc.setor] += 1;
+        }
+        if (summary.porRisco.hasOwnProperty(doc.riskLevel)) {
+            summary.porRisco[doc.riskLevel] += 1;
+        }
         if (doc.issues.length > 0) {
             summary.documentsWithPendingIssues += 1;
         }
@@ -162,15 +147,8 @@ function register({ eventBus, updateJobStatus }) {
             const auditFindings = payload?.auditFindings || { documents: [] };
             const validationSummary = payload?.validations || [];
 
-            const fiscalDocsByName = new Map();
-            ensureArray(fiscalChecks.documents).forEach(doc => {
-                fiscalDocsByName.set(doc.fileName, doc);
-            });
-
-            const auditDocsByName = new Map();
-            ensureArray(auditFindings.documents).forEach(doc => {
-                auditDocsByName.set(doc.fileName, doc);
-            });
+            const fiscalDocsByName = new Map(ensureArray(fiscalChecks.documents).map(doc => [doc.fileName, doc]));
+            const auditDocsByName = new Map(ensureArray(auditFindings.documents).map(doc => [doc.fileName, doc]));
 
             const documents = artifacts.map(artifact => {
                 const fileName = artifact?.fileName || 'desconhecido';
@@ -181,13 +159,13 @@ function register({ eventBus, updateJobStatus }) {
                 const cfops = ensureArray(fiscalDoc.cfops);
                 const ncms = ensureArray(fiscalDoc.ncms).length > 0 ? ensureArray(fiscalDoc.ncms) : normaliseNcms(text);
 
-                let tipoOperacao = inferOperationFromCfop(cfops) || inferOperationFromText(text) || 'desconhecido';
-                if (!OPERATION_TYPES.includes(tipoOperacao)) {
+                let tipoOperacao = CLASSIFICATION.inferOperationFromCfop(cfops) || inferFromText(text, 'operation') || 'desconhecido';
+                if (!CLASSIFICATION.OPERATION_TYPES.includes(tipoOperacao)) {
                     tipoOperacao = 'desconhecido';
                 }
 
-                let setor = inferSectorFromNcm(ncms) || inferSectorFromText(text) || 'outros';
-                if (!SECTORS.includes(setor)) {
+                let setor = CLASSIFICATION.inferSectorFromNcm(ncms) || inferFromText(text, 'sector') || 'outros';
+                if (!CLASSIFICATION.SECTORS.includes(setor)) {
                     setor = 'outros';
                 }
 

@@ -23,41 +23,69 @@ fi
 
 echo -e "${GREEN}🚀 Iniciando ambiente de desenvolvimento do Nexus QuantumI2A2...${NC}"
 
+# --- ESTRATÉGIA ROBUSTA: Limpa o ambiente Docker antes de começar ---
+echo -e "\n${YELLOW}🧹 Limpando ambiente Docker anterior (se existir)...${NC}"
+"${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down --remove-orphans >/dev/null 2>&1 || true
+
+# Detecta se estamos em WSL1, que não é suportado pelo Node.js 20+.
+is_wsl() {
+    [ -f /proc/version ] && grep -qi microsoft /proc/version
+}
+
+is_wsl2() {
+    [ -f /proc/sys/kernel/osrelease ] && grep -qi "microsoft-standard" /proc/sys/kernel/osrelease
+}
+
+if is_wsl && ! is_wsl2; then
+    echo -e "${RED}Erro: WSL 1 não é suportado por este ambiente.${NC}"
+    echo -e "${RED}Por favor, rode este script no Windows, no WSL 2 ou em outro ambiente compatível com o Node.js 20+.${NC}"
+    exit 1
+fi
+
 # Garante que o script pare se algum comando falhar
 set -e
 
 # --- Liberação de Portas ---
 free_port() {
+    local port=$1
     echo -e "${BLUE}   - Verificando e liberando a porta $1...${NC}"
-    if lsof -i :$1 -sTCP:LISTEN -t >/dev/null ; then
-        echo -e "${YELLOW}     - Porta $1 está em uso. Tentando liberar...${NC}"
-        lsof -t -i :$1 | xargs kill -9
-        sleep 1 # Dá um tempo para a porta ser liberada
-        if lsof -i :$1 -sTCP:LISTEN -t >/dev/null ; then
-            echo -e "${RED}     - Não foi possível liberar a porta $1. Saindo.${NC}"
+
+    # Em WSL, 'lsof' não vê portas ocupadas pelo host do Windows.
+    # Usamos 'netstat.exe' para verificar a porta no host se estivermos em WSL.
+    if command -v cmd.exe >/dev/null 2>&1; then
+        if cmd.exe /c "netstat -ano -p TCP | findstr :${port}.*LISTENING" >/dev/null; then
+            echo -e "${RED}     - Erro: A porta ${port} está em uso no host do Windows.${NC}"
+            echo -e "${YELLOW}     - Provavelmente um container antigo está ativo. Tente rodar 'docker compose down' e execute o script novamente.${NC}"
+            echo -e "${YELLOW}     - Se não resolver, use no PowerShell (Admin): 'Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess' para encontrar o processo.${NC}"
             exit 1
-        else
-            echo -e "${GREEN}     - Porta $1 liberada com sucesso.${NC}"
         fi
+    fi
+
+    # Verificação padrão para Linux/macOS ou processos dentro do WSL
+    if lsof -i ":${port}" -sTCP:LISTEN -t >/dev/null ; then
+        echo -e "${YELLOW}     - Porta ${port} está em uso (dentro do WSL). Tentando liberar...${NC}"
+        lsof -t -i ":${port}" | xargs kill -9
+        sleep 1 # Dá um tempo para a porta ser liberada
+        if lsof -i ":${port}" -sTCP:LISTEN -t >/dev/null ; then
+            echo -e "${RED}     - Não foi possível liberar a porta ${port}. Saindo.${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}     - Porta ${port} liberada com sucesso.${NC}"
     else
-        echo -e "${GREEN}     - Porta $1 já está livre.${NC}"
+        echo -e "${GREEN}     - Porta ${port} já está livre.${NC}"
     fi
 }
 
 echo -e "\n${YELLOW}🔎 Verificando e liberando portas necessárias...${NC}"
 free_port 3001 # Porta do Backend
 free_port 8000 # Porta do Frontend
+free_port 8080 # Porta usada pelo Weaviate
+free_port 6379 # Porta usada pelo Redis
 
-
-# --- 1. Preparar e Iniciar o Backend ---
-echo -e "\n${YELLOW}▶️  Preparando o Backend...${NC}"
-
-echo -e "${BLUE}   - Verificando e instalando dependências do Node.js (npm install)...${NC}"
-npm install # Instala dependências da raiz, incluindo as do workspace do backend
-
-cd backend
+# --- 1. Iniciar a Infraestrutura (Docker) ---
+echo -e "\n${YELLOW}▶️  Iniciando a infraestrutura (Docker)...${NC}"
 echo -e "${BLUE}   - Iniciando serviços de infraestrutura (Redis & Weaviate) com Docker...${NC}"
-"${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d
+"${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d --force-recreate
 
 echo -e "${BLUE}   - Aguardando o Weaviate ficar pronto...${NC}"
 # Loop para verificar a saúde do Weaviate antes de continuar
@@ -75,6 +103,18 @@ until $(curl --output /dev/null --silent --fail http://localhost:8080/v1/.well-k
 done
 echo -e "\n${GREEN}   - Weaviate está pronto!${NC}"
 
+# --- 2. Preparar e Iniciar o Backend ---
+echo -e "\n${YELLOW}▶️  Preparando o Backend...${NC}"
+
+if [ ! -d "node_modules" ] || [ "package-lock.json" -nt "node_modules" ]; then
+    echo -e "${BLUE}   - Instalando ou atualizando dependências do Node.js (npm install)...${NC}"
+    npm install # Instala dependências da raiz, incluindo as do workspace do backend
+else
+    echo -e "${GREEN}   - Dependências do Node.js já estão atualizadas. Pulando instalação.${NC}"
+fi
+
+cd backend
+
 echo -e "${BLUE}   - Iniciando o servidor Backend (Node.js) em background...${NC}"
 # Inicia o servidor em background e redireciona a saída para um log
 node server.js > ../backend.log 2>&1 &
@@ -91,6 +131,8 @@ cleanup() {
     fi
     "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down >/dev/null 2>&1 || true
     # rm -f backend.log # Remove o log antigo
+    # Opcional: remover logs ao finalizar. Comentado para manter os logs para depuração.
+    # rm -f backend.log frontend.log
     echo -e "${GREEN}Ambiente finalizado.${NC}"
     exit 0
 }
@@ -124,12 +166,14 @@ echo -e "\n${GREEN}✅ Backend e serviços auxiliares iniciados!${NC}"
 echo -e "   - Backend rodando em: ${BLUE}http://localhost:3001${NC}"
 echo -e "   - Log do backend em: ${BLUE}backend.log${NC}"
 
-# --- 2. Iniciar o Frontend ---
+# --- 3. Iniciar o Frontend ---
 echo -e "\n${YELLOW}▶️  Iniciando o servidor do Frontend (Vite Dev Server)...${NC}"
 echo -e "\n${GREEN}🎉 Ambiente pronto! Acesse a aplicação em: http://localhost:8000${NC}"
+echo -e "   - Log do frontend em: ${BLUE}frontend.log${NC}"
 echo -e "(Pressione ${YELLOW}Ctrl+C${NC} para finalizar todos os processos)"
 
-npm run dev -- --host 0.0.0.0 --port 8000 --strictPort >/dev/null 2>&1 &
+# Inicia o servidor frontend em background e redireciona a saída para um log
+npm run dev -- --host 0.0.0.0 --port 8000 --strictPort > frontend.log 2>&1 &
 FRONTEND_PID=$!
 
 wait # Espera por Ctrl+C para chamar a função cleanup

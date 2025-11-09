@@ -66,6 +66,7 @@ async function executeWithRetry(operation, attempt = 0) {
 const availableTools = {
     tax_simulation: tools.tax_simulation,
     cnpj_validation: tools.cnpj_validation,
+    consult_fiscal_legislation: tools.consult_fiscal_legislation,
 };
 
 const functionDeclarationsRegistry = {
@@ -90,6 +91,17 @@ const functionDeclarationsRegistry = {
                 cnpj: { type: 'STRING', description: 'Número do CNPJ (com ou sem máscara).' },
             },
             required: ['cnpj'],
+        },
+    },
+    consult_fiscal_legislation: {
+        name: 'consult_fiscal_legislation',
+        description: 'Consulta uma base de conhecimento de legislação fiscal para obter informações sobre um tópico tributário específico.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                query: { type: 'STRING', description: 'O tópico ou termo fiscal a ser consultado (ex: "crédito presumido", "substituição tributária").' },
+            },
+            required: ['query'],
         },
     },
 };
