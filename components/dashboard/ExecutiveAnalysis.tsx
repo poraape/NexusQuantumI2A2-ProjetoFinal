@@ -1,15 +1,17 @@
 
 // Fix: Implementing the ExecutiveAnalysis component to display report data.
 import React from 'react';
-import { ExecutiveSummary } from '../../types';
+import { ExecutiveSummary, ProcessingMetrics } from '../../types.ts';
 import { MetricCard } from './MetricCard';
 import { NfeTrendChart } from './NfeTrendChart';
 import { TaxChart } from './TaxChart';
 import { PaperIcon } from '../icons/PaperIcon';
 import { CsvAnalysisInsights } from './CsvAnalysisInsights';
+import { ProcessingOverview } from './ProcessingOverview';
 
 interface ExecutiveAnalysisProps {
   summary: ExecutiveSummary;
+  processingMetrics?: ProcessingMetrics;
 }
 
 const formatCurrency = (value: number) => {
@@ -19,7 +21,7 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
-export const ExecutiveAnalysis: React.FC<ExecutiveAnalysisProps> = ({ summary }) => {
+export const ExecutiveAnalysis: React.FC<ExecutiveAnalysisProps> = ({ summary, processingMetrics }) => {
   if (!summary || !summary.keyMetrics) {
     return (
       <div className="bg-bg-secondary backdrop-blur-xl rounded-3xl border border-border-glass shadow-glass p-6 h-full">
@@ -75,6 +77,9 @@ export const ExecutiveAnalysis: React.FC<ExecutiveAnalysisProps> = ({ summary })
           </li>
         ))}
       </ul>
+      <div className="mt-6">
+        <ProcessingOverview metrics={processingMetrics} />
+      </div>
     </div>
   );
 };

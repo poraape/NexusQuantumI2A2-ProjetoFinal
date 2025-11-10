@@ -1,6 +1,7 @@
 // backend/agents/indexingAgent.js
 
 const { embeddingModel } = require('../services/geminiClient');
+const logger = require('../services/logger').child({ module: 'indexingAgent' });
 
 function register({ eventBus, updateJobStatus, weaviate }) {
     eventBus.on('task:start', async ({ jobId, taskName, payload }) => {
@@ -36,6 +37,13 @@ function register({ eventBus, updateJobStatus, weaviate }) {
                     summary: item.summary,
                 }));
             });
+
+            if (!chunks.length) {
+                logger?.warn?.(`[Indexador] Job ${jobId}: Nenhum chunk gerado, pulando envio para o Weaviate.`);
+                await updateJobStatus(jobId, 5, 'completed', 'Nenhum conteúdo compatível para indexação.');
+                eventBus.emit('task:completed', { jobId, taskName, resultPayload: {}, payload: payload });
+                return;
+            }
 
             // 2. Embedding e Inserção em Lote no Weaviate
             const embeddings = await embeddingModel.batchEmbedContents({ requests: chunks.map(c => ({ model: "models/text-embedding-004", content: c.content })) });

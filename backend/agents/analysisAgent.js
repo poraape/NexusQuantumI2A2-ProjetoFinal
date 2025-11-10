@@ -72,7 +72,6 @@ ${context || fileContentsForAnalysis.map(f => `### Documento: ${f.fileName}\n${(
 
             const chat = model.startChat({
                 tools: availableTools,
-                config: { responseMimeType: 'application/json' },
             });
 
             const result = await chat.sendMessage(prompt);
@@ -109,7 +108,6 @@ Atualize o JSON final seguindo exatamente a mesma estrutura definida anteriormen
 
             const result = await model.generateContent({
                 contents: [{ parts: [{ text: followUpPrompt }] }],
-                generationConfig: { responseMimeType: 'application/json' },
             });
 
             const executiveSummary = robustJsonParse(result.response.text());

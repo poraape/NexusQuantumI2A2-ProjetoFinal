@@ -34,6 +34,7 @@ coverage/
 # Gerados pelo Docker e pela aplicação durante a execução.
 weaviate_data/
 .uploads/
+backend/por.traineddata
 
 # --- Configurações de IDEs e Editores ---
 # Específicos do ambiente de cada desenvolvedor.

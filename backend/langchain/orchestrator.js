@@ -31,7 +31,10 @@ async function executeLangChainChain(entry, userContext, jobId, metrics) {
     logger.info('[LangChain] Chain iniciado.', { jobId, taskName });
     metrics?.incrementCounter('langchain_chain_runs_total');
     try {
-        const result = await entry.chain.call(userContext);
+        const chainInput = {
+            input: userContext,
+        };
+        const result = await entry.chain.call(chainInput);
         const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
         logger.info('[LangChain] Chain concluído.', { jobId, taskName, durationMs });
         metrics?.incrementCounter('langchain_chain_success_total');
@@ -122,7 +125,7 @@ async function buildRagContext(weaviate, jobId, maxChunks = 4) {
         const response = await weaviate.client.graphql
             .get()
             .withClassName(weaviate.className)
-            .withFields('fileName content chunkIndex sourceHash summary')
+            .withFields('fileName content')
             .withWhere({ path: ['jobId'], operator: 'Equal', valueText: jobId })
             .withLimit(maxChunks)
             .do();

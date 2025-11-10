@@ -21,11 +21,27 @@ else
     exit 1
 fi
 
+# Função para parar os processos em background ao sair do script (Ctrl+C) ou no início
+cleanup() {
+    echo -e "\n\n${YELLOW}🛑 Finalizando o ambiente...${NC}"
+    # Encerra processos por porta para garantir que nada fique para trás
+    lsof -t -i ":3001" | xargs kill -9 2>/dev/null || true
+    lsof -t -i ":8000" | xargs kill -9 2>/dev/null || true
+    
+    if [ -n "${BACKEND_PID:-}" ] && kill -0 $BACKEND_PID 2>/dev/null; then
+        kill $BACKEND_PID
+    fi
+    if [ -n "${FRONTEND_PID:-}" ] && kill -0 $FRONTEND_PID 2>/dev/null; then
+        kill $FRONTEND_PID
+    fi
+    "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down --remove-orphans >/dev/null 2>&1 || true
+    echo -e "${GREEN}Ambiente finalizado.${NC}"
+}
+
 echo -e "${GREEN}🚀 Iniciando ambiente de desenvolvimento do Nexus QuantumI2A2...${NC}"
 
-# --- ESTRATÉGIA ROBUSTA: Limpa o ambiente Docker antes de começar ---
-echo -e "\n${YELLOW}🧹 Limpando ambiente Docker anterior (se existir)...${NC}"
-"${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down --remove-orphans >/dev/null 2>&1 || true
+# --- ESTRATÉGIA ROBUSTA: Limpa qualquer ambiente anterior antes de começar ---
+cleanup
 
 # Detecta se estamos em WSL1, que não é suportado pelo Node.js 20+.
 is_wsl() {
@@ -53,11 +69,18 @@ free_port() {
     # Em WSL, 'lsof' não vê portas ocupadas pelo host do Windows.
     # Usamos 'netstat.exe' para verificar a porta no host se estivermos em WSL.
     if command -v cmd.exe >/dev/null 2>&1; then
-        if cmd.exe /c "netstat -ano -p TCP | findstr :${port}.*LISTENING" >/dev/null; then
-            echo -e "${RED}     - Erro: A porta ${port} está em uso no host do Windows.${NC}"
-            echo -e "${YELLOW}     - Provavelmente um container antigo está ativo. Tente rodar 'docker compose down' e execute o script novamente.${NC}"
-            echo -e "${YELLOW}     - Se não resolver, use no PowerShell (Admin): 'Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess' para encontrar o processo.${NC}"
-            exit 1
+        # Encontra o PID do processo usando a porta no Windows
+        local pid
+        pid=$(cmd.exe /c "netstat -ano -p TCP" | grep "LISTENING" | grep ":${port} " | awk '{print $NF}' | head -n 1)
+
+        if [ -n "$pid" ] && [ "$pid" != "0" ]; then
+            echo -e "${YELLOW}     - Porta ${port} está em uso no host do Windows (PID: $pid). Tentando liberar...${NC}"
+            # Usa taskkill para encerrar o processo no Windows
+            cmd.exe /c "taskkill /PID $pid /F" >/dev/null 2>&1
+            sleep 1 # Dá um tempo para a porta ser liberada
+            echo -e "${GREEN}     - Porta ${port} liberada com sucesso no host do Windows.${NC}"
+        else
+             echo -e "${GREEN}     - Porta ${port} já está livre no host do Windows.${NC}"
         fi
     fi
 
@@ -71,8 +94,6 @@ free_port() {
             exit 1
         fi
         echo -e "${GREEN}     - Porta ${port} liberada com sucesso.${NC}"
-    else
-        echo -e "${GREEN}     - Porta ${port} já está livre.${NC}"
     fi
 }
 
@@ -103,6 +124,46 @@ until $(curl --output /dev/null --silent --fail http://localhost:8080/v1/.well-k
 done
 echo -e "\n${GREEN}   - Weaviate está pronto!${NC}"
 
+wait_for_container_health() {
+    local service="$1"
+    local friendlyName="$2"
+    local maxAttempts=${3:-30}
+    local attempt=0
+    local containerId
+    containerId=$("${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" ps -q "${service}")
+
+    if [ -z "${containerId}" ]; then
+        echo -e "${RED}Erro: não foi possível obter o ID do container ${friendlyName}.${NC}"
+        "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down >/dev/null 2>&1 || true
+        exit 1
+    fi
+
+    local healthStatus=""
+    while [ "${healthStatus}" != "healthy" ]; do
+        if [ ${attempt} -ge ${maxAttempts} ]; then
+            echo -e "${RED}Erro: O container ${friendlyName} não ficou saudável após ${maxAttempts} tentativas.${NC}"
+            "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down >/dev/null 2>&1 || true
+            exit 1
+        fi
+
+        healthStatus=$(docker inspect --format '{{.State.Health.Status}}' "${containerId}" 2>/dev/null || echo "starting")
+        if [ -z "${healthStatus}" ]; then
+            healthStatus="starting"
+        fi
+
+        if [ "${healthStatus}" != "healthy" ] && [ $((attempt % 5)) -eq 0 ]; then
+            echo -e "${BLUE}   - Aguardando ${friendlyName} ficar saudável (status: ${healthStatus})...${NC}"
+        fi
+
+        attempt=$((attempt+1))
+        sleep 1
+    done
+
+    echo -e "${GREEN}   - ${friendlyName} está saudável!${NC}"
+}
+
+wait_for_container_health redis "Redis"
+
 # --- 2. Preparar e Iniciar o Backend ---
 echo -e "\n${YELLOW}▶️  Preparando o Backend...${NC}"
 
@@ -121,23 +182,14 @@ node.exe server.js > ../backend.log 2>&1 & # Força o uso do node.exe do Windows
 BACKEND_PID=$!
 
 # Função para parar os processos em background ao sair do script (Ctrl+C)
-cleanup() {
-    echo -e "\n\n${YELLOW}🛑 Finalizando o ambiente...${NC}"
-    if kill -0 $BACKEND_PID 2>/dev/null; then
-        kill $BACKEND_PID
-    fi
-    if [ -n "${FRONTEND_PID:-}" ] && kill -0 $FRONTEND_PID 2>/dev/null; then
-        kill $FRONTEND_PID
-    fi
-    "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down >/dev/null 2>&1 || true
-    # rm -f backend.log # Remove o log antigo
+handle_exit() {
+    cleanup
     # Opcional: remover logs ao finalizar. Comentado para manter os logs para depuração.
     # rm -f backend.log frontend.log
-    echo -e "${GREEN}Ambiente finalizado.${NC}"
     exit 0
 }
 
-trap cleanup SIGINT
+trap handle_exit SIGINT
 
 # Volta para a raiz do projeto
 cd ..
@@ -147,14 +199,13 @@ cd ..
 
 echo -e "\n${YELLOW}⌛ Aguardando o servidor backend ficar pronto...${NC}"
 
-# Loop para verificar a saúde do backend antes de continuar
 RETRY_COUNT=0
 MAX_RETRIES=10
-until $(curl --output /dev/null --silent --head --fail http://localhost:3001/api/health); do
+until cmd.exe /c "curl --silent --head --fail http://localhost:3001/api/health >NUL 2>NUL"; do
     if [ ${RETRY_COUNT} -ge ${MAX_RETRIES} ]; then
         echo -e "${RED}Erro: O servidor backend não iniciou após ${MAX_RETRIES} tentativas.${NC}"
         echo -e "${YELLOW}Verifique o log em 'backend.log' para mais detalhes.${NC}"
-        cleanup
+        handle_exit
         exit 1
     fi
     printf '.'
@@ -176,4 +227,4 @@ echo -e "(Pressione ${YELLOW}Ctrl+C${NC} para finalizar todos os processos)"
 cmd.exe /c "npm run dev -- --host 0.0.0.0 --port 8000 --strictPort" > frontend.log 2>&1 &
 FRONTEND_PID=$!
 
-wait # Espera por Ctrl+C para chamar a função cleanup
+wait # Espera por Ctrl+C para chamar a função handle_exit

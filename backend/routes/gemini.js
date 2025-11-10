@@ -16,11 +16,8 @@ module.exports = (context) => {
         console.log(`[BFF-GeminiProxy] Recebida requisição para Gemini. Modo JSON: ${isJsonMode}`);
 
         try {
-            const generationConfig = isJsonMode ? { responseMimeType: 'application/json' } : undefined;
-            
             const result = await model.generateContent({
                 contents: [{ parts: promptParts }],
-                generationConfig,
             });
 
             const response = await result.response;

@@ -42,6 +42,42 @@ export interface ExecutiveSummary {
   csvInsights?: CsvInsight[];
 }
 
+export interface FileTypeMetric {
+  category: string;
+  count: number;
+  bytes: number;
+}
+
+export interface DocumentProcessingMetric {
+  fileName: string;
+  hash: string;
+  mimeType: string;
+  sizeBytes: number;
+  artifactCount: number;
+  chunkCount: number;
+  textLength: number;
+  detectionCategory: string;
+}
+
+export interface EntityCoverage {
+  cnpjs: number;
+  monetaryValues: number;
+  emails: number;
+}
+
+export interface ProcessingMetrics {
+  captureTimestamp: string;
+  totalUploadedFiles: number;
+  totalStoredBytes: number;
+  totalArtifacts: number;
+  totalChunks: number;
+  totalCharacters: number;
+  distinctDocuments: number;
+  entityCoverage: EntityCoverage;
+  fileTypeBreakdown: FileTypeMetric[];
+  documents: DocumentProcessingMetric[];
+}
+
 export interface GeneratedReport {
   executiveSummary: ExecutiveSummary;
   fullTextAnalysis?: string;
@@ -53,6 +89,7 @@ export interface GeneratedReport {
   langChainAudit?: string;
   langChainAuditFindings?: string;
   langChainClassification?: string;
+  processingMetrics?: ProcessingMetrics;
 }
 
 export interface AuditValidationDetail {

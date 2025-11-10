@@ -1,7 +1,8 @@
 const path = require('path');
 const JSZip = require('jszip');
 const PDFParser = require('pdf2json');
-const pdfParse = require('pdf-parse');
+const pdfParseImport = require('pdf-parse');
+const pdfParse = pdfParseImport?.default || pdfParseImport;
 const mammoth = require('mammoth');
 const xlsx = require('xlsx');
 const { parse: parseCsv } = require('csv-parse/sync');
@@ -12,12 +13,14 @@ const { xml2json } = require('xml-js');
 const fileType = require('file-type');
 const artifactCache = require('./artifactCache');
 const dataGovernance = require('./dataGovernance');
+const logger = require('./logger').child({ module: 'extractor' });
 
 const TEXT_ENCODINGS = ['utf8', 'latin1', 'base64'];
 const OCR_LANGUAGE = process.env.OCR_LANGUAGE || 'por';
 const OCR_MIN_TEXT_LENGTH = 20;
 const MAX_CHUNK_SIZE = 2200;
 const ZIP_CONCURRENCY = 4;
+const FILE_EXTRACTION_CONCURRENCY = parseInt(process.env.EXTRACTION_CONCURRENCY || '3', 10);
 
 async function runWithConcurrency(tasks, limit) {
     const executing = [];
@@ -151,10 +154,23 @@ async function detectFormat({ buffer, fileName, mimeType }) {
 }
 
 let tesseractWorker = null;
+let ocrInitialized = false;
 
 async function getTesseractWorker() {
     if (!tesseractWorker) {
-        tesseractWorker = await Tesseract.createWorker(OCR_LANGUAGE);
+        tesseractWorker = await Tesseract.createWorker({
+            logger: (log) => {
+                if (log?.status && log?.progress) {
+                    logger.debug('OCR progress', { status: log.status, progress: log.progress });
+                }
+            },
+        });
+    }
+    if (!ocrInitialized) {
+        await tesseractWorker.load();
+        await tesseractWorker.loadLanguage(OCR_LANGUAGE);
+        await tesseractWorker.initialize(OCR_LANGUAGE);
+        ocrInitialized = true;
     }
     return tesseractWorker;
 }
@@ -162,11 +178,19 @@ async function getTesseractWorker() {
 async function extractWithOcr(buffer) {
     try {
         const worker = await getTesseractWorker();
-        const preparedImage = await sharp(buffer).greyscale().sharpen().toFormat('png').toBuffer();
+        const preparedImage = await sharp(buffer)
+            .ensureAlpha()
+            .flatten({ background: '#ffffff' })
+            .grayscale()
+            .sharpen()
+            .resize({ width: 2480, withoutEnlargement: true })
+            .toFormat('png')
+            .toBuffer();
+
         const { data: { text } } = await worker.recognize(preparedImage);
         return text;
     } catch (error) {
-        console.warn('[Extractor-OCR] Falha no processamento OCR:', error.message);
+        logger.warn('[Extractor-OCR] Falha no processamento OCR:', { error: error.message });
         return '';
     }
 }
@@ -405,6 +429,50 @@ async function extractArtifactsForFileMeta(fileMeta, storageService) {
     return artifacts;
 }
 
+async function extractArtifactsForFiles(filesMeta = [], storageService) {
+    if (!Array.isArray(filesMeta) || filesMeta.length === 0) {
+        return { artifacts: [], fileContentsForAnalysis: [] };
+    }
+
+    const tasks = filesMeta.map(fileMeta => async () => {
+        const extractedArtifacts = await extractArtifactsForFileMeta(fileMeta, storageService);
+        return { fileMeta, extractedArtifacts };
+    });
+
+    const settled = await runWithConcurrency(tasks, FILE_EXTRACTION_CONCURRENCY);
+    const artifacts = [];
+    const fileContentsForAnalysis = [];
+    let successCount = 0;
+
+    settled.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+            successCount += 1;
+            const { extractedArtifacts } = result.value;
+            extractedArtifacts.forEach(artifact => {
+                artifacts.push(artifact);
+                fileContentsForAnalysis.push({
+                    fileName: artifact.fileName,
+                    content: artifact.text,
+                    sourceHash: artifact.hash,
+                });
+            });
+        } else {
+            const failedMeta = filesMeta[index];
+            logger.warn('[Extractor] Arquivo não processado', {
+                fileName: failedMeta?.originalName || failedMeta?.name,
+                hash: failedMeta?.hash,
+                error: result.reason?.message || result.reason,
+            });
+        }
+    });
+
+    if (successCount === 0) {
+        throw new Error('Nenhum artefato pôde ser extraído dos arquivos enviados.');
+    }
+
+    return { artifacts, fileContentsForAnalysis };
+}
+
 function cleanup() {
     if (tesseractWorker) {
         tesseractWorker.terminate();
@@ -418,4 +486,5 @@ process.on('SIGTERM', cleanup);
 
 module.exports = {
     extractArtifactsForFileMeta,
+    extractArtifactsForFiles,
 };

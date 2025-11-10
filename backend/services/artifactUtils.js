@@ -67,6 +67,95 @@ function buildAggregatedStats(artifacts = []) {
     };
 }
 
+function buildProcessingMetrics(artifacts = [], fileMetas = []) {
+    const fileMetaMap = new Map((fileMetas || []).map(meta => [meta.hash, meta]));
+    const docMetrics = new Map();
+    const entitySets = {
+        cnpjs: new Set(),
+        monetaryValues: new Set(),
+        emails: new Set(),
+    };
+    let totalChunks = 0;
+    let totalCharacters = 0;
+    const fileTypeMap = new Map();
+
+    function ensureDocEntry(hash, fallbackName, fallbackMime, detectionCategory) {
+        if (docMetrics.has(hash)) return docMetrics.get(hash);
+        const meta = fileMetaMap.get(hash);
+        const entry = {
+            fileName: meta?.originalName || fallbackName || `doc-${hash}`,
+            hash,
+            mimeType: meta?.mimeType || fallbackMime || 'desconhecido',
+            sizeBytes: meta?.size || 0,
+            artifactCount: 0,
+            chunkCount: 0,
+            textLength: 0,
+            detectionCategory: detectionCategory || 'desconhecido',
+        };
+        docMetrics.set(hash, entry);
+        return entry;
+    }
+
+    (artifacts || []).forEach(artifact => {
+        const parentHash = artifact.parentHash || artifact.hash || artifact.fileName || 'artifact-unknown';
+        const parentName = artifact.parentName || artifact.fileName || 'documento';
+        const detectionCategory = artifact.detection?.category || 'desconhecido';
+        const docEntry = ensureDocEntry(parentHash, parentName, artifact.mimeType, detectionCategory);
+        docEntry.artifactCount += 1;
+        docEntry.chunkCount += artifact.chunkCount || 0;
+        const textLength = (artifact.text || '').length;
+        docEntry.textLength += textLength;
+        docEntry.sizeBytes = Math.max(docEntry.sizeBytes || 0, artifact.size || docEntry.sizeBytes || 0);
+        docEntry.mimeType = docEntry.mimeType || artifact.mimeType || 'desconhecido';
+        docEntry.detectionCategory = detectionCategory;
+
+        totalChunks += artifact.chunkCount || 0;
+        totalCharacters += textLength;
+
+        const fileTypeLabel = detectionCategory;
+        const existingType = fileTypeMap.get(fileTypeLabel) || { category: fileTypeLabel, count: 0, bytes: 0 };
+        existingType.count += 1;
+        existingType.bytes += artifact.size || 0;
+        fileTypeMap.set(fileTypeLabel, existingType);
+
+        (artifact.entities?.cnpjs || []).forEach(cnpj => entitySets.cnpjs.add(cnpj));
+        (artifact.entities?.monetaryValues || []).forEach(value => entitySets.monetaryValues.add(value));
+        (artifact.entities?.emails || []).forEach(email => entitySets.emails.add(email));
+    });
+
+    (fileMetas || []).forEach(meta => {
+        if (!meta || !meta.hash) return;
+        const entry = ensureDocEntry(meta.hash, meta.originalName || meta.name, meta.mimeType || 'desconhecido', 'meta');
+        entry.sizeBytes = Math.max(entry.sizeBytes, meta.size || 0);
+    });
+
+    const fileTypeBreakdown = Array.from(fileTypeMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+    const documentSummaries = Array.from(docMetrics.values())
+        .sort((a, b) => b.artifactCount - a.artifactCount || b.textLength - a.textLength)
+        .slice(0, 5);
+
+    const totalStoredBytes = (fileMetas || []).reduce((sum, meta) => sum + (meta?.size || 0), 0);
+
+    return {
+        captureTimestamp: new Date().toISOString(),
+        totalUploadedFiles: (fileMetas || []).length,
+        totalStoredBytes,
+        totalArtifacts: (artifacts || []).length,
+        totalChunks,
+        totalCharacters,
+        distinctDocuments: docMetrics.size,
+        entityCoverage: {
+            cnpjs: entitySets.cnpjs.size,
+            monetaryValues: entitySets.monetaryValues.size,
+            emails: entitySets.emails.size,
+        },
+        fileTypeBreakdown,
+        documents: documentSummaries,
+    };
+}
+
 function buildAnalysisContext(artifacts = [], options = {}) {
     const maxArtifacts = options.maxArtifacts || DEFAULT_MAX_ARTIFACTS;
     const snippetLength = options.snippetLength || DEFAULT_SNIPPET_LENGTH;
@@ -83,4 +172,5 @@ function buildAnalysisContext(artifacts = [], options = {}) {
 
 module.exports = {
     buildAnalysisContext,
+    buildProcessingMetrics,
 };

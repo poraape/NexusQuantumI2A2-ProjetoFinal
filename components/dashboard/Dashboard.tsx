@@ -109,7 +109,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
       
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         <div id="dashboard-view-content" className="lg:col-span-3">
-            {view === 'analysis' && <ExecutiveAnalysis summary={report.executiveSummary} />}
+            {view === 'analysis' && (
+              <ExecutiveAnalysis summary={report.executiveSummary} processingMetrics={report.processingMetrics} />
+            )}
             {view === 'simulator' && <TaxSimulator report={report} onSimulationComplete={setSimulationResult} logError={logError} />}
             {view === 'comparison' && (
               <ComparativeAnalysis 
