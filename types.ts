@@ -78,6 +78,17 @@ export interface ProcessingMetrics {
   documents: DocumentProcessingMetric[];
 }
 
+export interface AggregatedMetricsSummary {
+  totalFiles: number;
+  totalBytes: number;
+  totalArtifacts: number;
+  totalChunks: number;
+  distinctDocuments: number;
+  averageArtifactsPerFile: number;
+  summaryText: string;
+  captureTimestamp: string;
+}
+
 export interface GeneratedReport {
   executiveSummary: ExecutiveSummary;
   fullTextAnalysis?: string;

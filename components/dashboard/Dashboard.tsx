@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { GeneratedReport, SimulationResult, ComparativeAnalysisReport, LogError } from '../../types.ts';
 import { ExecutiveAnalysis } from './ExecutiveAnalysis.tsx';
 import { InteractiveChat } from './InteractiveChat.tsx';
@@ -12,6 +12,11 @@ import { CompareIcon } from '../icons/CompareIcon.tsx';
 import { ComparativeAnalysis } from './ComparativeAnalysis.tsx';
 import { generateComparativeAnalysis } from '../../services/geminiService.ts';
 import { LangChainInsightsPanel } from './LangChainInsightsPanel.tsx';
+import {
+  buildAggregatedMetricsSummary,
+  cacheAggregatedMetrics,
+  getCachedAggregatedMetrics,
+} from '../../services/aggregatedMetricsCache.ts';
 
 interface DashboardProps {
   initialReport: GeneratedReport;
@@ -35,6 +40,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
   useEffect(() => {
     setReport(initialReport);
   }, [initialReport]);
+  const cachedAggregated = useMemo(() => (jobId ? getCachedAggregatedMetrics(jobId) : null), [jobId]);
+  const aggregatedSummary = useMemo(
+    () => buildAggregatedMetricsSummary(report, processedFiles) ?? cachedAggregated,
+    [report, processedFiles, cachedAggregated],
+  );
+
+  useEffect(() => {
+    if (jobId && aggregatedSummary) {
+      cacheAggregatedMetrics(jobId, aggregatedSummary);
+    }
+  }, [aggregatedSummary, jobId]);
   const [view, setView] = useState<DashboardView>('analysis');
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   
@@ -110,7 +126,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ initialReport, processedFi
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         <div id="dashboard-view-content" className="lg:col-span-3">
             {view === 'analysis' && (
-              <ExecutiveAnalysis summary={report.executiveSummary} processingMetrics={report.processingMetrics} />
+              <ExecutiveAnalysis
+                summary={report.executiveSummary}
+                processingMetrics={report.processingMetrics}
+                aggregatedSummary={aggregatedSummary}
+              />
             )}
             {view === 'simulator' && <TaxSimulator report={report} onSimulationComplete={setSimulationResult} logError={logError} />}
             {view === 'comparison' && (

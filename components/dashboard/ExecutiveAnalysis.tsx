@@ -1,17 +1,19 @@
 
 // Fix: Implementing the ExecutiveAnalysis component to display report data.
 import React from 'react';
-import { ExecutiveSummary, ProcessingMetrics } from '../../types.ts';
+import { AggregatedMetricsSummary, ExecutiveSummary, ProcessingMetrics } from '../../types.ts';
 import { MetricCard } from './MetricCard';
 import { NfeTrendChart } from './NfeTrendChart';
 import { TaxChart } from './TaxChart';
 import { PaperIcon } from '../icons/PaperIcon';
 import { CsvAnalysisInsights } from './CsvAnalysisInsights';
+import { AggregatedFileSummary } from './AggregatedFileSummary';
 import { ProcessingOverview } from './ProcessingOverview';
 
 interface ExecutiveAnalysisProps {
   summary: ExecutiveSummary;
   processingMetrics?: ProcessingMetrics;
+  aggregatedSummary?: AggregatedMetricsSummary | null;
 }
 
 const formatCurrency = (value: number) => {
@@ -21,7 +23,7 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
-export const ExecutiveAnalysis: React.FC<ExecutiveAnalysisProps> = ({ summary, processingMetrics }) => {
+export const ExecutiveAnalysis: React.FC<ExecutiveAnalysisProps> = ({ summary, processingMetrics, aggregatedSummary }) => {
   if (!summary || !summary.keyMetrics) {
     return (
       <div className="bg-bg-secondary backdrop-blur-xl rounded-3xl border border-border-glass shadow-glass p-6 h-full">
@@ -39,6 +41,7 @@ export const ExecutiveAnalysis: React.FC<ExecutiveAnalysisProps> = ({ summary, p
 
   return (
     <div className="bg-bg-secondary backdrop-blur-xl rounded-3xl border border-border-glass shadow-glass p-6 h-full">
+      {aggregatedSummary && <AggregatedFileSummary summary={aggregatedSummary} />}
       <div className="flex items-center mb-6">
         <div className="bg-blue-500/20 p-3 rounded-xl mr-4">
             <PaperIcon className="w-6 h-6 text-blue-300" />
