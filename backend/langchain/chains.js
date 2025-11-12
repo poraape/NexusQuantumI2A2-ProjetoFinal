@@ -17,7 +17,11 @@ function createGeminiChain(context, promptTemplate, memoryKey, outputKey, additi
     return new LLMChain({
         llm,
         prompt: promptTemplate,
-        memory: new BufferMemory({ memoryKey, returnMessages: false }),
+        memory: new BufferMemory({
+            memoryKey,
+            returnMessages: false,
+            inputKey: 'taskContext',
+        }),
         outputKey,
         inputKeys: DEFAULT_INPUT_KEYS,
     });
