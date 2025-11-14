@@ -329,37 +329,39 @@ async function buildArtifact({ buffer, hash, fileName, mimeType, size, detection
 
 async function extractFromZip(buffer, parentMeta) {
     const zip = await JSZip.loadAsync(buffer);
-    const taskGenerators = Object.keys(zip.files)
-        .map(entryName => zip.files[entryName])
-        .filter(entry => !entry.dir)
-        .map(entry => async () => {
-            const entryBuffer = await entry.async('nodebuffer');
-            const entryHash = crypto.createHash('sha256').update(entryBuffer).digest('hex');
-            const cached = await artifactCache.get(entryHash);
-            if (cached) {
-                return cached.map(artifact => ({
-                    ...artifact,
-                    parentHash: parentMeta.hash,
-                    parentName: parentMeta.fileName,
-                }));
-            }
-            const detection = await detectFormat({
-                buffer: entryBuffer,
-                fileName: entryName.toLowerCase(),
-                mimeType: '',
-            });
-            const artifact = await buildArtifact({
-                buffer: entryBuffer,
-                hash: entryHash,
-                fileName: entryName,
-                mimeType: detection.mime,
-                size: entryBuffer.length,
-                detection,
-            });
-            artifact.parentHash = parentMeta.hash;
-            artifact.parentName = parentMeta.fileName;
-            await artifactCache.set(entryHash, [artifact]);
-            return [artifact];
+    const taskGenerators = Object.entries(zip.files)
+        .filter(([, entry]) => !entry.dir)
+        .map(([entryName, entry]) => {
+            const normalizedEntryName = entryName.toLowerCase();
+            return async () => {
+                const entryBuffer = await entry.async('nodebuffer');
+                const entryHash = crypto.createHash('sha256').update(entryBuffer).digest('hex');
+                const cached = await artifactCache.get(entryHash);
+                if (cached) {
+                    return cached.map(artifact => ({
+                        ...artifact,
+                        parentHash: parentMeta.hash,
+                        parentName: parentMeta.fileName,
+                    }));
+                }
+                const detection = await detectFormat({
+                    buffer: entryBuffer,
+                    fileName: normalizedEntryName,
+                    mimeType: '',
+                });
+                const artifact = await buildArtifact({
+                    buffer: entryBuffer,
+                    hash: entryHash,
+                    fileName: entryName,
+                    mimeType: detection.mime,
+                    size: entryBuffer.length,
+                    detection,
+                });
+                artifact.parentHash = parentMeta.hash;
+                artifact.parentName = parentMeta.fileName;
+                await artifactCache.set(entryHash, [artifact]);
+                return [artifact];
+            };
         });
 
     const settled = await runWithConcurrency(taskGenerators, ZIP_CONCURRENCY);

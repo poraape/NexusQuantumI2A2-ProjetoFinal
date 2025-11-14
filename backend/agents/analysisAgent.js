@@ -2,6 +2,11 @@
 
 const { model, availableTools } = require('../services/geminiClient');
 const { buildAnalysisContext } = require('../services/artifactUtils');
+const {
+    extractKeyMetricsFromFiles,
+    formatKeyMetricsSummary,
+    mergeKeyMetricsWithComputed,
+} = require('../services/keyMetricsExtractor');
 
 function robustJsonParse(jsonString) {
     // Tenta extrair o JSON de um bloco de código Markdown
@@ -33,6 +38,8 @@ function register({ eventBus, updateJobStatus, metrics }) {
         try {
             const artifacts = payload.artifacts || [];
             const fileContentsForAnalysis = payload.fileContentsForAnalysis || artifacts.map(art => ({ fileName: art.fileName, content: art.text }));
+            const aggregatedMetrics = extractKeyMetricsFromFiles(fileContentsForAnalysis);
+            const aggregatedSummaryText = formatKeyMetricsSummary(aggregatedMetrics);
             await updateJobStatus(jobId, 4, 'in-progress', 'Ag. Inteligência: Gerando análise executiva...');
             const { context, stats } = buildAnalysisContext(artifacts);
 
@@ -54,6 +61,7 @@ Você é um analista fiscal especializado. Com base nos dados agregados e nos re
 }
 
 Use as estatísticas agregadas e o contexto resumido. Os dados já foram pré-validados por outros agentes.
+${aggregatedSummaryText ? `Métricas extraídas automaticamente:\n${aggregatedSummaryText}` : ''}
 Se identificar que o valor total das notas supera 100000, use a ferramenta 'tax_simulation' com regime 'Lucro Real'.
 Se encontrar um tópico fiscal complexo ou uma dúvida sobre legislação (ex: "crédito presumido", "substituição tributária"), use a ferramenta 'consult_fiscal_legislation' para buscar esclarecimentos antes de formular seus insights.
 Não use ferramentas para validações simples como CNPJ, pois isso já foi feito.
@@ -79,12 +87,16 @@ ${context || fileContentsForAnalysis.map(f => `### Documento: ${f.fileName}\n${(
 
             if (call) {
                 console.log(`[AnalysisAgent] Job ${jobId}: IA solicitou o uso da ferramenta '${call.name}'. Acionando o ToolsAgent.`);
+                const enrichedPayload = { ...payload, analysisAggregatedMetrics: aggregatedMetrics };
                 // A IA quer usar uma ferramenta. Pausamos esta tarefa e pedimos ao Orquestrador para executar a ferramenta.
-                eventBus.emit('tool:run', { jobId, toolCall: call, payload, prompt });
+                eventBus.emit('tool:run', { jobId, toolCall: call, payload: enrichedPayload, prompt });
                 // A continuação ocorrerá quando o Orquestrador receber 'tool:completed'
             } else {
                 // A IA respondeu diretamente.
                 const executiveSummary = robustJsonParse(result.response.text());
+                if (executiveSummary) {
+                    executiveSummary.keyMetrics = mergeKeyMetricsWithComputed(executiveSummary.keyMetrics || {}, aggregatedMetrics);
+                }
                 await updateJobStatus(jobId, 4, 'completed');
                 eventBus.emit('task:completed', { jobId, taskName, resultPayload: { executiveSummary }, payload: payload });
             }
@@ -111,6 +123,10 @@ Atualize o JSON final seguindo exatamente a mesma estrutura definida anteriormen
             });
 
             const executiveSummary = robustJsonParse(result.response.text());
+            const aggregatedMetrics = originalPayload?.analysisAggregatedMetrics || {};
+            if (executiveSummary) {
+                executiveSummary.keyMetrics = mergeKeyMetricsWithComputed(executiveSummary.keyMetrics || {}, aggregatedMetrics);
+            }
             await updateJobStatus(jobId, 4, 'completed', 'Análise com simulação concluída.');
             eventBus.emit('task:completed', { jobId, taskName: 'analysis', resultPayload: { executiveSummary }, payload: originalPayload });
 

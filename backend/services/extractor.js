@@ -14,6 +14,7 @@ const fileType = require('file-type');
 const artifactCache = require('./artifactCache');
 const dataGovernance = require('./dataGovernance');
 const logger = require('./logger').child({ module: 'extractor' });
+const { FIELD_DEFINITIONS } = require('./keyMetricsExtractor');
 
 const TEXT_ENCODINGS = ['utf8', 'latin1', 'base64'];
 const OCR_LANGUAGE = process.env.OCR_LANGUAGE || 'por';
@@ -285,11 +286,90 @@ async function extractFromCsv(buffer) {
     }
 }
 
+const XML_TAG_FIELD_MAP = {
+    vNF: 'valorTotalDasNfes',
+    vProd: 'valorTotalDosProdutos',
+    vICMS: 'valorTotalDeICMS',
+    vPIS: 'valorTotalDePIS',
+    vCOFINS: 'valorTotalDeCOFINS',
+    vISS: 'valorTotalDeISS',
+    vISSQN: 'valorTotalDeISS',
+    vFrete: 'valorTotalFrete',
+    vDesc: 'valorTotalDescontos',
+};
+
+function extractXmlNodeText(node) {
+    if (!node) return null;
+    if (typeof node === 'string') return node;
+    if (typeof node._text === 'string') return node._text;
+    if (typeof node._cdata === 'string') return node._cdata;
+    if (Array.isArray(node)) {
+        for (const child of node) {
+            const text = extractXmlNodeText(child);
+            if (text) return text;
+        }
+        return null;
+    }
+    const entries = Object.entries(node);
+    for (const [key, value] of entries) {
+        if (key.startsWith('_')) continue;
+        const text = extractXmlNodeText(value);
+        if (text) return text;
+    }
+    return null;
+}
+
+function collectXmlValues(node, result = {}) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+        node.forEach(child => collectXmlValues(child, result));
+        return;
+    }
+    Object.entries(node).forEach(([key, value]) => {
+        if (XML_TAG_FIELD_MAP[key]) {
+            const metricKey = XML_TAG_FIELD_MAP[key];
+            if (!result[metricKey]) {
+                const textValue = extractXmlNodeText(value);
+                if (textValue) {
+                    result[metricKey] = textValue;
+                }
+            }
+        }
+        collectXmlValues(value, result);
+    });
+}
+
+function formatCurrencyAnnotation(value) {
+    if (value === undefined || value === null) return '';
+    const normalized = String(value).trim().replace(',', '.');
+    if (!normalized) return '';
+    const numeric = Number(normalized);
+    if (!Number.isFinite(numeric)) return '';
+    return `R$ ${numeric.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+}
+
+function buildXmlAnnotations(values = {}) {
+    const lines = [];
+    Object.entries(values).forEach(([metricKey, rawValue]) => {
+        const definition = FIELD_DEFINITIONS[metricKey];
+        const keyword = definition?.keywords?.[0] || metricKey;
+        const formatted = formatCurrencyAnnotation(rawValue);
+        if (!formatted) return;
+        lines.push(`${keyword}: ${formatted}`);
+    });
+    return lines;
+}
+
 async function extractFromXml(buffer) {
     try {
         const xmlText = bufferToString(buffer);
         const jsonResult = xml2json(xmlText, { compact: true, spaces: 2 });
-        return `\`\`\`json\n${jsonResult}\n\`\`\``;
+        const parsed = JSON.parse(jsonResult);
+        const fieldValues = {};
+        collectXmlValues(parsed, fieldValues);
+        const annotations = buildXmlAnnotations(fieldValues);
+        const annotationText = annotations.length ? `\n\n${annotations.join('\n')}` : '';
+        return `\`\`\`json\n${jsonResult}\n\`\`\`${annotationText}`;
     } catch (error) {
         console.warn('[Extractor-XML] Falha no parse de XML:', error.message);
         return bufferToString(buffer);
@@ -353,37 +433,39 @@ async function buildArtifact({ buffer, hash, fileName, mimeType, size, detection
 
 async function extractFromZip(buffer, parentMeta) {
     const zip = await JSZip.loadAsync(buffer);
-    const taskGenerators = Object.keys(zip.files)
-        .map(entryName => zip.files[entryName])
-        .filter(entry => !entry.dir)
-        .map(entry => async () => {
-            const entryBuffer = await entry.async('nodebuffer');
-            const entryHash = crypto.createHash('sha256').update(entryBuffer).digest('hex');
-            const cached = await artifactCache.get(entryHash);
-            if (cached) {
-                return cached.map(artifact => ({
-                    ...artifact,
-                    parentHash: parentMeta.hash,
-                    parentName: parentMeta.fileName,
-                }));
-            }
-            const detection = await detectFormat({
-                buffer: entryBuffer,
-                fileName: entryName.toLowerCase(),
-                mimeType: '',
-            });
-            const artifact = await buildArtifact({
-                buffer: entryBuffer,
-                hash: entryHash,
-                fileName: entryName,
-                mimeType: detection.mime,
-                size: entryBuffer.length,
-                detection,
-            });
-            artifact.parentHash = parentMeta.hash;
-            artifact.parentName = parentMeta.fileName;
-            await artifactCache.set(entryHash, [artifact]);
-            return [artifact];
+    const taskGenerators = Object.entries(zip.files)
+        .filter(([, entry]) => !entry.dir)
+        .map(([entryName, entry]) => {
+            const normalizedEntryName = entryName.toLowerCase();
+            return async () => {
+                const entryBuffer = await entry.async('nodebuffer');
+                const entryHash = crypto.createHash('sha256').update(entryBuffer).digest('hex');
+                const cached = await artifactCache.get(entryHash);
+                if (cached) {
+                    return cached.map(artifact => ({
+                        ...artifact,
+                        parentHash: parentMeta.hash,
+                        parentName: parentMeta.fileName,
+                    }));
+                }
+                const detection = await detectFormat({
+                    buffer: entryBuffer,
+                    fileName: normalizedEntryName,
+                    mimeType: '',
+                });
+                const artifact = await buildArtifact({
+                    buffer: entryBuffer,
+                    hash: entryHash,
+                    fileName: entryName,
+                    mimeType: detection.mime,
+                    size: entryBuffer.length,
+                    detection,
+                });
+                artifact.parentHash = parentMeta.hash;
+                artifact.parentName = parentMeta.fileName;
+                await artifactCache.set(entryHash, [artifact]);
+                return [artifact];
+            };
         });
 
     const settled = await runWithConcurrency(taskGenerators, ZIP_CONCURRENCY);
